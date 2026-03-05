@@ -1,0 +1,1711 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>익스트랙션 액션 프로토타입</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* touch-action: none 으로 모바일 브라우저의 새로고침, 스와이프를 방지합니다. */
+        body { margin: 0; overflow: hidden; background-color: #111; color: white; user-select: none; touch-action: none; }
+        canvas { display: block; }
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        .pointer-events-auto { pointer-events: auto; }
+        
+        /* 인벤토리 슬롯 스타일 */
+        .inv-slot {
+            background: rgba(50, 50, 50, 0.8); border: 2px solid #555;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 8px; position: relative; user-select: none;
+        }
+        .inv-slot.empty { border: 2px dashed #444; }
+        .inv-slot[draggable=true] { cursor: grab; }
+        .inv-slot[draggable=true]:active { cursor: grabbing; }
+        .item-count { position: absolute; bottom: 2px; right: 4px; font-size: 12px; font-weight: bold; text-shadow: 1px 1px 0 #000; }
+        
+        /* 커스텀 스크롤바 */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #222; }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+        
+        /* 제작 리스트 선택 하이라이트 */
+        .recipe-item.selected { background-color: rgba(59, 130, 246, 0.3); border-color: #3b82f6; }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<!-- UI 레이어 -->
+<div id="uiLayer" class="ui-layer">
+    
+    <!-- 마을 (준비 화면) -->
+    <div id="screenTown" class="absolute inset-0 bg-gray-900 bg-opacity-95 flex flex-col items-center justify-center pointer-events-auto transition-opacity duration-300 z-40">
+        <h1 class="text-5xl font-bold mb-2 text-red-500 tracking-wider text-center">PROJECT: EXTRACTION</h1>
+        <p class="text-gray-400 mb-8">안전 구역 (마을)</p>
+        
+        <div class="flex flex-col md:flex-row gap-4 md:gap-8 w-full max-w-4xl px-4 overflow-y-auto max-h-[70vh]">
+            <!-- 자산 및 상태 -->
+            <div class="bg-gray-800 p-6 rounded-lg flex-1 border border-gray-700 flex flex-col justify-between">
+                <div>
+                    <h2 class="text-2xl font-bold mb-4 border-b border-gray-600 pb-2">나의 자산</h2>
+                    <div class="flex items-center gap-2 mb-2 text-yellow-400">
+                        <span>💰 귀중품:</span> <span id="townValuables" class="font-mono text-xl">0</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-blue-400 mb-6">
+                        <span>⚙️ 재료:</span> <span id="townMaterials" class="font-mono text-xl">0</span>
+                    </div>
+                    
+                    <h3 class="text-xl font-bold mb-2 text-gray-300">이전 출정 결과</h3>
+                    <p id="townLastRun" class="text-sm text-gray-500 bg-gray-900 p-3 rounded text-center">-</p>
+                </div>
+                
+                <div class="flex gap-2 mt-6">
+                    <button id="btnOpenStashTown" class="flex-1 w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 md:py-4 rounded-lg border border-gray-500 transition shadow-lg flex items-center justify-center gap-2 md:text-lg">
+                        📦 창고/장비
+                    </button>
+                    <button id="btnOpenCrafting" class="flex-1 w-full bg-blue-800 hover:bg-blue-700 text-white font-bold py-3 md:py-4 rounded-lg border border-blue-500 transition shadow-lg flex items-center justify-center gap-2 md:text-lg">
+                        🔨 제작대
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 업그레이드 시설 -->
+            <div class="bg-gray-800 p-6 rounded-lg flex-1 border border-gray-700">
+                <h2 class="text-2xl font-bold mb-4 border-b border-gray-600 pb-2">시설 업그레이드</h2>
+                
+                <div class="mb-4 bg-gray-900 p-4 rounded border border-gray-700">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="font-bold text-lg">📦 창고 Lv.<span id="whLevel">1</span></span>
+                        <button id="btnUpWH" class="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-sm font-bold transition">강화</button>
+                    </div>
+                    <p class="text-sm text-gray-400">가방(인벤토리) 슬롯을 확장합니다.</p>
+                    <p class="text-xs text-yellow-500 mt-1">비용: 💰 <span id="whCostVal">100</span> / ⚙️ <span id="whCostMat">50</span></p>
+                </div>
+                
+                <div class="bg-gray-900 p-4 rounded border border-gray-700">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="font-bold text-lg">⚒️ 작업대 Lv.<span id="wbLevel">1</span></span>
+                        <button id="btnUpWB" class="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-sm font-bold transition">강화</button>
+                    </div>
+                    <p class="text-sm text-gray-400">기본 체력과 스태미나를 증가시킵니다.</p>
+                    <p class="text-xs text-yellow-500 mt-1">비용: 💰 <span id="wbCostVal">150</span> / ⚙️ <span id="wbCostMat">100</span></p>
+                </div>
+            </div>
+        </div>
+        
+        <button id="btnEmbark" class="mt-6 md:mt-10 bg-red-600 hover:bg-red-500 text-white text-xl md:text-2xl font-bold py-4 px-12 md:px-16 rounded-lg shadow-[0_0_15px_rgba(220,38,38,0.5)] transition hover:scale-105">
+            출정하기 (Enter The Zone)
+        </button>
+    </div>
+
+    <!-- 인게임 HUD -->
+    <div id="screenHUD" class="absolute inset-0 hidden">
+        <div class="absolute top-4 left-4 w-48 md:w-64 z-10 pointer-events-none">
+            <div class="flex justify-between text-sm mb-1 font-bold">
+                <span class="text-red-400">HP</span>
+                <span id="hpText">100/100</span>
+                <span id="defText" class="text-blue-400 ml-2 drop-shadow">DEF 0</span>
+            </div>
+            <div class="w-full bg-gray-800 h-4 rounded overflow-hidden border border-gray-600 mb-2 shadow">
+                <div id="hpBar" class="bg-red-500 h-full w-full transition-all"></div>
+            </div>
+            
+            <div class="flex justify-between text-sm mb-1 font-bold"><span class="text-green-400">STAMINA</span></div>
+            <div class="w-full bg-gray-800 h-3 rounded overflow-hidden border border-gray-600 shadow">
+                <div id="spBar" class="bg-green-500 h-full w-full transition-all"></div>
+            </div>
+        </div>
+        
+        <!-- 하단: 퀵슬롯 (모바일에서는 터치해서 바로 사용 가능) -->
+        <div class="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex flex-col items-center pointer-events-auto z-10">
+            <div id="quickSlotHUDContainer" class="flex gap-1 md:gap-2 p-2 bg-gray-900 bg-opacity-80 rounded-xl border border-gray-700 backdrop-blur-sm shadow-lg"></div>
+            <p class="text-xs text-gray-400 mt-2 text-shadow hidden md:block">아이템 사용: 단축키 [1]~[8] | 인벤토리: [Tab]</p>
+        </div>
+        
+        <!-- 중앙: 상호작용 프롬프트 -->
+        <div id="interactPrompt" class="absolute top-2/3 left-1/2 transform -translate-x-1/2 -translate-y-1/2 hidden flex flex-col items-center text-center z-10 pointer-events-none">
+            <div class="bg-white text-black px-3 py-1 rounded font-bold mb-1 shadow-lg text-lg animate-bounce">[ E ] / 터치</div>
+            <span id="interactText" class="text-white font-bold text-shadow">상호작용</span>
+        </div>
+        
+        <!-- 중앙: 채널링 바 -->
+        <div id="channelingUI" class="absolute top-1/4 left-1/2 transform -translate-x-1/2 w-64 md:w-80 hidden text-center z-20 pointer-events-none">
+            <h3 class="text-xl font-bold text-green-400 mb-2 drop-shadow-md">탈출 중...</h3>
+            <div class="w-full bg-gray-800 h-6 rounded-full overflow-hidden border-2 border-green-500 shadow-lg">
+                <div id="channelBar" class="bg-green-500 h-full w-0 transition-none"></div>
+            </div>
+        </div>
+
+        <!-- 모바일 가상 게임패드 -->
+        <div id="mobileControls" class="absolute inset-0 pointer-events-none hidden z-30">
+            
+            <!-- 좌측 조이스틱 (이동) -->
+            <div id="joystickZoneLeft" class="absolute bottom-8 left-8 w-32 h-32 bg-gray-500 bg-opacity-20 rounded-full border-2 border-white border-opacity-30 pointer-events-auto flex items-center justify-center touch-none">
+                <div id="joystickKnobLeft" class="w-12 h-12 bg-white bg-opacity-60 rounded-full shadow-lg absolute transform -translate-x-1/2 -translate-y-1/2 touch-none" style="top:50%; left:50%;"></div>
+            </div>
+
+            <!-- 우측 조이스틱 (에임/시선) -->
+            <div id="joystickZoneRight" class="absolute bottom-8 right-8 w-32 h-32 bg-gray-500 bg-opacity-20 rounded-full border-2 border-white border-opacity-30 pointer-events-auto flex items-center justify-center touch-none">
+                <!-- 에임 조이스틱은 빨간색으로 구분 -->
+                <div id="joystickKnobRight" class="w-12 h-12 bg-red-400 bg-opacity-60 rounded-full shadow-lg absolute transform -translate-x-1/2 -translate-y-1/2 touch-none" style="top:50%; left:50%;"></div>
+            </div>
+
+            <!-- 액션 버튼 (우측 조이스틱 위쪽, 검지 파지 고려한 레이아웃) -->
+            <div class="absolute bottom-44 right-8 pointer-events-auto touch-none flex flex-row-reverse gap-4 items-center">
+                <button id="vBtnAttack" class="w-16 h-16 bg-red-600 bg-opacity-70 rounded-full text-white font-bold border-2 border-red-400 shadow-lg text-lg touch-none flex items-center justify-center">공격</button>
+                <button id="vBtnDash" class="w-14 h-14 bg-blue-600 bg-opacity-70 rounded-full text-white font-bold border-2 border-blue-400 shadow-lg text-sm touch-none flex items-center justify-center">대시</button>
+                <button id="vBtnInteract" class="w-14 h-14 bg-yellow-600 bg-opacity-70 rounded-full text-white font-bold border-2 border-yellow-400 shadow-lg text-xs touch-none flex items-center justify-center">상호작용</button>
+            </div>
+
+            <!-- 인벤토리 열기 버튼 (우측 상단) -->
+            <div class="absolute top-4 right-4 pointer-events-auto touch-none">
+                <button id="vBtnInv" class="w-12 h-12 bg-gray-700 bg-opacity-80 rounded-lg text-white font-bold border-2 border-gray-400 shadow-lg touch-none flex items-center justify-center">가방</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 통합 인벤토리 / 창고 창 (Z-index 50) -->
+    <!-- 배경 클릭 시 닫히도록 onclick 추가 -->
+    <div id="inventoryWindow" class="absolute inset-0 bg-black bg-opacity-70 hidden flex items-center justify-center pointer-events-auto z-50" ondrop="handleDropOutside(event)" ondragover="allowDrop(event)" onclick="closeInventory()">
+        <div class="bg-gray-800 border border-gray-600 rounded-lg p-4 md:p-6 flex flex-col transition-all duration-300 shadow-2xl max-w-[95vw] max-h-[95vh] overflow-hidden" onclick="event.stopPropagation()" ondrop="event.stopPropagation()">
+            
+            <div class="flex justify-between items-center mb-4 border-b border-gray-600 pb-2">
+                <h2 id="invWindowTitle" class="text-lg md:text-xl font-bold text-white">소지품 및 상호작용</h2>
+                <button id="btnCloseInv" class="text-gray-400 hover:text-white font-bold text-xl px-2">✕</button>
+            </div>
+            
+            <div class="flex gap-2 md:gap-4 mb-2 overflow-y-auto flex-1 flex-wrap justify-center">
+                <!-- 1. 장비창 -->
+                <div class="w-[70px] md:w-[80px] flex flex-col items-center flex-shrink-0">
+                    <h3 class="text-xs md:text-md font-bold text-gray-300 mb-2">장비</h3>
+                    <div id="equipGrid" class="flex flex-col gap-1 bg-gray-900 p-2 rounded w-full items-center"></div>
+                </div>
+
+                <!-- 2. 가방 영역 -->
+                <div class="w-[260px] md:w-[300px] flex flex-col flex-shrink-0">
+                    <h3 class="text-xs md:text-md font-bold text-gray-300 mb-2">가방 (Inventory)</h3>
+                    <div id="invGrid" class="grid grid-cols-4 gap-1 md:gap-2 bg-gray-900 p-2 md:p-3 rounded min-h-[100px]"></div>
+
+                    <h3 class="text-xs md:text-md font-bold text-gray-300 mb-2 mt-2 md:mt-4">퀵슬롯 장착</h3>
+                    <div id="quickSlotGrid" class="grid grid-cols-4 gap-1 md:gap-2 bg-gray-900 p-2 md:p-3 rounded"></div>
+                </div>
+
+                <!-- 3A. 루팅(상자) 영역 -->
+                <div id="lootSection" class="w-full md:w-[240px] hidden flex-col border-t md:border-t-0 md:border-l border-gray-600 pt-4 md:pt-0 md:pl-4 flex-shrink-0">
+                    <h3 class="text-xs md:text-md font-bold text-yellow-500 mb-2">상자 탐색 중...</h3>
+                    <div id="lootGrid" class="grid grid-cols-3 gap-2 bg-gray-900 p-3 rounded min-h-[100px]"></div>
+                    <p class="text-xs text-gray-400 mt-2 text-center">아이템을 가방으로 옮기세요.</p>
+                </div>
+
+                <!-- 3B. 창고(Stash) 영역 -->
+                <div id="stashSection" class="w-full md:w-[480px] hidden flex-col border-t md:border-t-0 md:border-l border-gray-600 pt-4 md:pt-0 md:pl-4 h-[300px] md:h-[500px] flex-shrink-0">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="text-xs md:text-md font-bold text-yellow-500">대형 창고 (Stash)</h3>
+                        <button id="btnSellStash" class="bg-yellow-600 hover:bg-yellow-500 text-black px-2 py-1 rounded text-[10px] md:text-xs font-bold transition shadow">일괄 판매</button>
+                    </div>
+                    <div class="overflow-y-auto pr-2 bg-gray-900 p-2 md:p-3 rounded flex-1">
+                        <div id="stashGrid" class="grid grid-cols-6 md:grid-cols-10 gap-1"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 아이템 세부 정보 표시 패널 -->
+            <div id="itemInfoPanel" class="bg-gray-900 border border-gray-700 rounded-lg p-2 md:p-3 flex flex-col items-center justify-center mt-2 shadow-inner text-center flex-shrink-0 relative min-h-[70px]">
+                <span id="infoName" class="text-md md:text-lg font-bold text-white mb-1">아이템에 마우스를 올리세요</span>
+                <span id="infoDesc" class="text-xs md:text-sm text-gray-400">우클릭/터치로 장착 및 사용</span>
+                
+                <button id="btnMobileDrop" class="hidden absolute right-4 top-1/2 transform -translate-y-1/2 bg-red-600 hover:bg-red-500 text-white font-bold py-1 px-3 rounded shadow text-xs">
+                    버리기
+                </button>
+            </div>
+            
+            <p id="dropOutsideHint" class="text-xs md:text-sm text-gray-400 mt-2 text-center flex-shrink-0 hidden md:block">창 바깥으로 아이템을 <strong>드래그</strong>하면 바닥에 버립니다.</p>
+        </div>
+    </div>
+
+    <!-- 제작창 (Z-index 50) -->
+    <div id="craftingWindow" class="absolute inset-0 bg-black bg-opacity-80 hidden flex items-center justify-center pointer-events-auto z-50" onclick="document.getElementById('craftingWindow').classList.add('hidden')">
+        <div class="bg-gray-800 border border-gray-600 rounded-lg p-4 md:p-6 flex flex-col w-[95vw] md:w-[700px] h-[80vh] md:h-[500px] shadow-2xl relative" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center mb-4 border-b border-gray-600 pb-2">
+                <h2 class="text-xl md:text-2xl font-bold text-white">🔨 작업대 (제작)</h2>
+                <button id="btnCloseCrafting" class="text-gray-400 hover:text-white font-bold text-xl px-2">✕</button>
+            </div>
+            
+            <div class="flex flex-col md:flex-row gap-4 flex-1 overflow-hidden">
+                <div class="w-full md:w-1/2 bg-gray-900 rounded border border-gray-700 overflow-y-auto p-2 h-1/2 md:h-full">
+                    <h3 class="text-xs md:text-sm font-bold text-gray-400 mb-2 px-2">제작 가능 목록</h3>
+                    <ul id="recipeList" class="space-y-1"></ul>
+                </div>
+                
+                <div class="w-full md:w-1/2 bg-gray-900 rounded border border-gray-700 p-4 flex flex-col h-1/2 md:h-full">
+                    <div id="craftDetails" class="flex-1 hidden overflow-y-auto">
+                        <div class="flex items-center gap-3 mb-2 md:mb-4 border-b border-gray-700 pb-2 md:pb-4">
+                            <div id="cIcon" class="text-3xl md:text-4xl bg-gray-800 p-2 md:p-3 rounded border border-gray-600">🗡️</div>
+                            <div>
+                                <h3 id="cName" class="text-lg md:text-xl font-bold text-white">낡은 검</h3>
+                                <p id="cType" class="text-xs md:text-sm text-gray-400">무기</p>
+                            </div>
+                        </div>
+                        <p id="cDesc" class="text-xs md:text-sm text-gray-300 mb-4 min-h-[30px]">설명</p>
+                        
+                        <h4 class="text-xs md:text-sm font-bold text-yellow-500 mb-2">필요 재료 (가방+창고)</h4>
+                        <ul id="cIngredients" class="space-y-1 md:space-y-2 mb-4"></ul>
+                    </div>
+                    <div id="craftEmpty" class="flex-1 flex items-center justify-center text-gray-500 text-sm">
+                        목록에서 제작할 아이템을 선택하세요.
+                    </div>
+                    
+                    <button id="btnDoCraft" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 md:py-3 rounded mt-auto disabled:bg-gray-600 disabled:text-gray-400 transition hidden">
+                        제작하기
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 알림 메시지 (Z-index 60) -->
+    <div id="toastMsg" class="absolute top-20 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-80 text-white px-6 py-2 rounded-full font-bold opacity-0 transition-opacity duration-300 z-[60] shadow text-sm md:text-base pointer-events-none">
+        메시지
+    </div>
+
+    <!-- 결과 화면 (Z-index 100) -->
+    <div id="screenResult" class="absolute inset-0 bg-black bg-opacity-90 hidden flex flex-col items-center justify-center pointer-events-auto z-[100]">
+        <h1 id="resultTitle" class="text-4xl md:text-6xl font-black mb-4 text-center">탈출 성공!</h1>
+        <p id="resultSub" class="text-gray-400 mb-8 text-sm md:text-lg text-center px-4">무사히 귀환했습니다. 전리품은 가방에 보관되어 있습니다.</p>
+        
+        <div class="bg-gray-800 p-4 md:p-6 rounded-lg border border-gray-700 w-[90vw] md:w-[450px] max-w-full mx-auto shadow-2xl">
+            <h2 class="text-lg md:text-xl font-bold mb-4 border-b border-gray-600 pb-2 text-center">이번 탐험 결과</h2>
+            <ul id="resultList" class="space-y-2 mb-4 max-h-48 md:max-h-60 overflow-y-auto px-2 text-sm md:text-base"></ul>
+        </div>
+        
+        <button id="btnReturn" class="mt-8 bg-white text-black hover:bg-gray-200 text-lg md:text-xl font-bold py-3 px-12 rounded shadow-lg transition">
+            마을로 복귀
+        </button>
+    </div>
+</div>
+
+<script>
+/**
+ * EXTRACTION: MVP PROTOTYPE
+ * Web Audio API Sound Engine Included
+ */
+
+// --- Audio Manager (사운드 시스템) ---
+const AudioManager = {
+    ctx: null,
+    compressor: null,
+    masterGain: null,
+    bgmGain: null,
+    bgmOsc1: null,
+    bgmOsc2: null,
+    lfo: null,
+    melodyInterval: null,
+    melodyStep: 0,
+    // 신비로우면서 탐험하는 느낌을 주는 스케일 (E2, A2, D3, E3, B2, G2)
+    melodyNotes: [82.41, 110.00, 146.83, 164.81, 123.47, 98.00],
+    
+    init: function() {
+        if (this.ctx) return;
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        this.ctx = new AudioContext();
+        
+        // 귀 보호를 위한 컴프레서 (갑자기 큰 소리가 나는 것을 방지)
+        this.compressor = this.ctx.createDynamicsCompressor();
+        this.compressor.threshold.value = -15; // -15dB를 넘어가면 압축
+        this.compressor.knee.value = 10;
+        this.compressor.ratio.value = 12;
+        this.compressor.attack.value = 0.01;
+        this.compressor.release.value = 0.25;
+        
+        // 마스터 볼륨 제한
+        this.masterGain = this.ctx.createGain();
+        this.masterGain.gain.value = 0.7; // 전체 볼륨을 70%로 제한
+        
+        this.compressor.connect(this.masterGain);
+        this.masterGain.connect(this.ctx.destination);
+    },
+    
+    play: function(type, vol = 1) {
+        if (!this.ctx) this.init();
+        if (!this.ctx) return;
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+        
+        let osc = this.ctx.createOscillator();
+        let gain = this.ctx.createGain();
+        let t = this.ctx.currentTime;
+        
+        let noiseSource, bandpass, bSize, noiseBuf, out;
+        
+        switch(type) {
+            case 'ui':
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, t);
+                gain.gain.setValueAtTime(0.05 * vol, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+                osc.connect(gain); gain.connect(this.compressor);
+                osc.start(t); osc.stop(t + 0.1);
+                break;
+            case 'pick':
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, t);
+                osc.frequency.linearRampToValueAtTime(800, t + 0.1);
+                gain.gain.setValueAtTime(0.05 * vol, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+                osc.connect(gain); gain.connect(this.compressor);
+                osc.start(t); osc.stop(t + 0.1);
+                break;
+            case 'drop':
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(400, t);
+                osc.frequency.linearRampToValueAtTime(200, t + 0.1);
+                gain.gain.setValueAtTime(0.05 * vol, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+                osc.connect(gain); gain.connect(this.compressor);
+                osc.start(t); osc.stop(t + 0.1);
+                break;
+            case 'inv_move':
+                // 인벤토리 아이템 이동 (가벼운 마찰음)
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(300, t);
+                osc.frequency.exponentialRampToValueAtTime(100, t + 0.05);
+                gain.gain.setValueAtTime(0.08 * vol, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.05);
+                osc.connect(gain); gain.connect(this.compressor);
+                osc.start(t); osc.stop(t + 0.05);
+                break;
+            case 'equip':
+                // 장비 장착/해제 (찰칵거리는 소리)
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(600, t);
+                osc.frequency.exponentialRampToValueAtTime(150, t + 0.1);
+                gain.gain.setValueAtTime(0.15 * vol, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+                osc.connect(gain); gain.connect(this.compressor);
+                osc.start(t); osc.stop(t + 0.1);
+                break;
+            case 'sword':
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, t);
+                osc.frequency.exponentialRampToValueAtTime(40, t + 0.2);
+                gain.gain.setValueAtTime(0.05 * vol, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
+                osc.connect(gain); gain.connect(this.compressor);
+                osc.start(t); osc.stop(t + 0.2);
+                break;
+            case 'spear':
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(300, t);
+                osc.frequency.exponentialRampToValueAtTime(100, t + 0.15);
+                gain.gain.setValueAtTime(0.05 * vol, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+                osc.connect(gain); gain.connect(this.compressor);
+                osc.start(t); osc.stop(t + 0.15);
+                break;
+            case 'bow':
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, t);
+                osc.frequency.exponentialRampToValueAtTime(200, t + 0.15);
+                gain.gain.setValueAtTime(0.05 * vol, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+                osc.connect(gain); gain.connect(this.compressor);
+                osc.start(t); osc.stop(t + 0.15);
+                break;
+            case 'enemy_melee':
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(200, t);
+                osc.frequency.exponentialRampToValueAtTime(50, t + 0.15);
+                gain.gain.setValueAtTime(0.06 * vol, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+                osc.connect(gain); gain.connect(this.compressor);
+                osc.start(t); osc.stop(t + 0.15);
+                break;
+            case 'enemy_ranged':
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(400, t);
+                osc.frequency.exponentialRampToValueAtTime(100, t + 0.2);
+                gain.gain.setValueAtTime(0.03 * vol, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
+                osc.connect(gain); gain.connect(this.compressor);
+                osc.start(t); osc.stop(t + 0.2);
+                break;
+            case 'hit':
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(100, t);
+                osc.frequency.exponentialRampToValueAtTime(20, t + 0.1);
+                gain.gain.setValueAtTime(0.1 * vol, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+                osc.connect(gain); gain.connect(this.compressor);
+                osc.start(t); osc.stop(t + 0.1);
+                break;
+            case 'loot':
+                // 묵직한 부시럭 소리 (White Noise + Lowpass Filter)
+                bSize = this.ctx.sampleRate * 0.15; // 150ms 길이
+                noiseBuf = this.ctx.createBuffer(1, bSize, this.ctx.sampleRate);
+                out = noiseBuf.getChannelData(0);
+                for(let i = 0; i < bSize; i++) out[i] = (Math.random() * 2 - 1) * 0.7;
+                
+                noiseSource = this.ctx.createBufferSource();
+                noiseSource.buffer = noiseBuf;
+                
+                bandpass = this.ctx.createBiquadFilter();
+                bandpass.type = 'lowpass'; // 로우패스 필터로 둔탁하게
+                bandpass.frequency.value = 300; // 저주파 대역만 남겨 묵직한 소리 연출
+                
+                noiseSource.connect(bandpass);
+                bandpass.connect(gain);
+                gain.connect(this.compressor);
+                
+                gain.gain.setValueAtTime(0.5 * vol, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+                noiseSource.start(t);
+                break;
+            case 'success':
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(440, t);
+                osc.frequency.setValueAtTime(554, t + 0.1);
+                osc.frequency.setValueAtTime(659, t + 0.2);
+                osc.frequency.setValueAtTime(880, t + 0.3);
+                gain.gain.setValueAtTime(0.1 * vol, t);
+                gain.gain.linearRampToValueAtTime(0.1, t + 0.3);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.8);
+                osc.connect(gain); gain.connect(this.compressor);
+                osc.start(t); osc.stop(t + 0.8);
+                break;
+            case 'fail':
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, t);
+                osc.frequency.linearRampToValueAtTime(50, t + 0.5);
+                gain.gain.setValueAtTime(0.1 * vol, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
+                osc.connect(gain); gain.connect(this.compressor);
+                osc.start(t); osc.stop(t + 0.5);
+                break;
+            case 'dash':
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, t);
+                osc.frequency.exponentialRampToValueAtTime(100, t + 0.25);
+                gain.gain.setValueAtTime(0.1 * vol, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+                osc.connect(gain); gain.connect(this.compressor);
+                osc.start(t); osc.stop(t + 0.25);
+                break;
+            case 'step':
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(100, t);
+                osc.frequency.exponentialRampToValueAtTime(10, t + 0.05);
+                gain.gain.setValueAtTime(0.15 * vol, t); 
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+                osc.connect(gain); gain.connect(this.compressor);
+                osc.start(t); osc.stop(t + 0.05);
+                break;
+        }
+    },
+    
+    startBGM: function() {
+        if (!this.ctx) this.init();
+        if (!this.ctx || this.bgmGain) return;
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+
+        this.bgmGain = this.ctx.createGain();
+        this.bgmGain.gain.setValueAtTime(0, this.ctx.currentTime);
+        this.bgmGain.gain.linearRampToValueAtTime(0.04, this.ctx.currentTime + 2);
+        this.bgmGain.connect(this.compressor); // 컴프레서 연결
+
+        this.bgmOsc1 = this.ctx.createOscillator();
+        this.bgmOsc1.type = 'sine';
+        this.bgmOsc1.frequency.value = 55;
+        
+        this.bgmOsc2 = this.ctx.createOscillator();
+        this.bgmOsc2.type = 'triangle';
+        this.bgmOsc2.frequency.value = 54.8;
+
+        this.lfo = this.ctx.createOscillator();
+        this.lfo.type = 'sine';
+        this.lfo.frequency.value = 0.15;
+        let lfoGain = this.ctx.createGain();
+        lfoGain.gain.value = 1.5;
+        this.lfo.connect(lfoGain);
+        lfoGain.connect(this.bgmOsc1.frequency);
+        lfoGain.connect(this.bgmOsc2.frequency);
+
+        this.bgmOsc1.connect(this.bgmGain);
+        this.bgmOsc2.connect(this.bgmGain);
+        
+        this.bgmOsc1.start();
+        this.bgmOsc2.start();
+        this.lfo.start();
+        
+        this.melodyStep = 0;
+        this.melodyInterval = setInterval(() => {
+            if (this.ctx.state !== 'running') return;
+            let freq = this.melodyNotes[this.melodyStep % this.melodyNotes.length];
+            this.melodyStep++;
+            
+            let mOsc = this.ctx.createOscillator();
+            mOsc.type = 'sine';
+            mOsc.frequency.value = freq;
+            
+            let mGain = this.ctx.createGain();
+            let mt = this.ctx.currentTime;
+            
+            mGain.gain.setValueAtTime(0, mt);
+            mGain.gain.linearRampToValueAtTime(0.015, mt + 0.6); // 어택을 빠르게
+            mGain.gain.exponentialRampToValueAtTime(0.001, mt + 2.0); // 여운이 남게
+            
+            mOsc.connect(mGain);
+            mGain.connect(this.compressor); // 컴프레서 연결
+            mOsc.start(mt);
+            mOsc.stop(mt + 2.1);
+        }, 1500); 
+    },
+    
+    stopBGM: function() {
+        if (this.bgmGain && this.ctx) {
+            this.bgmGain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 1);
+            if(this.melodyInterval) { clearInterval(this.melodyInterval); this.melodyInterval = null; }
+            setTimeout(() => {
+                if (this.bgmOsc1) { this.bgmOsc1.stop(); this.bgmOsc1.disconnect(); this.bgmOsc1 = null; }
+                if (this.bgmOsc2) { this.bgmOsc2.stop(); this.bgmOsc2.disconnect(); this.bgmOsc2 = null; }
+                if (this.lfo) { this.lfo.stop(); this.lfo.disconnect(); this.lfo = null; }
+                if (this.bgmGain) { this.bgmGain.disconnect(); this.bgmGain = null; }
+            }, 1000);
+        }
+    }
+};
+
+// UI 클릭 전역 사운드 연결
+window.addEventListener('pointerdown', (e) => {
+    AudioManager.init();
+    if(e.target.closest('button') || e.target.closest('.recipe-item')) {
+        AudioManager.play('ui');
+    }
+});
+
+
+const GAME_STATE = { TOWN: 0, PLAYING: 1, RESULT: 2 };
+let currentState = GAME_STATE.TOWN;
+
+let metaData = {
+    valuables: 0,
+    materials: 0,
+    upgrades: { warehouse: 1, workbench: 1 },
+    lastDeathCorpse: null,
+    receivedFreeWeapon: false,
+    stash: new Array(500).fill(null)
+};
+
+let runData = {
+    seed: Math.random(),
+    inventory: new Array(6).fill(null),
+    quickSlots: new Array(8).fill(null),
+    equipment: { weapon: null, head: null, chest: null, legs: null, boots: null },
+    maxSlots: 6,
+    extracted: false
+};
+
+let currentLootContainer = null;
+let selectedRecipeId = null; 
+
+// 아이템 스키마
+const ITEM_TYPES = { VALUABLE: 'valuable', CONSUMABLE: 'consumable', MATERIAL: 'material', EQUIPMENT: 'equipment' };
+const EQUIP_SLOTS = { WEAPON: 'weapon', HEAD: 'head', CHEST: 'chest', LEGS: 'legs', BOOTS: 'boots' };
+
+const ITEM_DB = {
+    gold: { id: 'gold', type: ITEM_TYPES.VALUABLE, name: '금화', emoji: '💰', value: 10, desc: '기본적인 재화입니다.' },
+    relic: { id: 'relic', type: ITEM_TYPES.VALUABLE, name: '고대 유물', emoji: '🏺', value: 50, desc: '값비싼 유물입니다.' },
+    potion: { id: 'potion', type: ITEM_TYPES.CONSUMABLE, name: '회복약', emoji: '🧪', value: 0, desc: '사용 시 체력을 40 회복합니다.' },
+    
+    herb: { id: 'herb', type: ITEM_TYPES.MATERIAL, name: '약초', emoji: '🌿', value: 2, desc: '회복약 제작에 쓰입니다.' },
+    fabric: { id: 'fabric', type: ITEM_TYPES.MATERIAL, name: '옷감', emoji: '🧵', value: 3, desc: '천 방어구 제작에 쓰입니다.' },
+    wood: { id: 'wood', type: ITEM_TYPES.MATERIAL, name: '튼튼한 나무', emoji: '🪵', value: 4, desc: '무기 제작에 쓰입니다.' },
+    leather: { id: 'leather', type: ITEM_TYPES.MATERIAL, name: '동물 가죽', emoji: '🟤', value: 8, desc: '가죽 방어구 제작에 쓰입니다.' },
+    iron_ore: { id: 'iron_ore', type: ITEM_TYPES.MATERIAL, name: '철광석', emoji: '🪨', value: 15, desc: '철 방어구/무기 제작에 쓰입니다.' },
+    scrap: { id: 'scrap', type: ITEM_TYPES.MATERIAL, name: '고철', emoji: '⚙️', value: 5, desc: '마을 시설 업그레이드용.' },
+    core: { id: 'core', type: ITEM_TYPES.MATERIAL, name: '에너지 코어', emoji: '🔋', value: 20, desc: '고급 업그레이드용.' },
+    
+    sword: { id: 'sword', type: ITEM_TYPES.EQUIPMENT, slot: EQUIP_SLOTS.WEAPON, name: '낡은 검', emoji: '🗡️', value: 20, desc: '부채꼴 범위 공격 (피해 35, 사거리 70)' },
+    spear: { id: 'spear', type: ITEM_TYPES.EQUIPMENT, slot: EQUIP_SLOTS.WEAPON, name: '사냥용 창', emoji: '🔱', value: 30, desc: '직선 찌르기 (피해 30, 사거리 110)' },
+    bow: { id: 'bow', type: ITEM_TYPES.EQUIPMENT, slot: EQUIP_SLOTS.WEAPON, name: '단궁', emoji: '🏹', value: 40, desc: '원거리 투사체 (피해 25, 안전한 거리)' }
+};
+
+const armorParts = [
+    { slot: 'head', name: ['천 두건', '가죽 투구', '철 투구'], emoji: ['🪖', '🪖', '⛑️'], defs: [2, 4, 7] },
+    { slot: 'chest', name: ['천 옷', '가죽 갑옷', '철 갑옷'], emoji: ['👕', '🦺', '🛡️'], defs: [3, 6, 10] },
+    { slot: 'legs', name: ['천 바지', '가죽 바지', '철 바지'], emoji: ['👖', '👖', '👖'], defs: [2, 4, 7] },
+    { slot: 'boots', name: ['짚신', '가죽 부츠', '철 부츠'], emoji: ['🩴', '👢', '🥾'], defs: [1, 3, 5] }
+];
+
+armorParts.forEach(part => {
+    for(let i=0; i<3; i++) {
+        let idStr = `${part.slot}_${i+1}`;
+        ITEM_DB[idStr] = {
+            id: idStr, type: ITEM_TYPES.EQUIPMENT, slot: part.slot, 
+            name: part.name[i], emoji: part.emoji[i], 
+            value: part.defs[i] * 10, desc: `장착 시 받는 피해량 -${part.defs[i]}`, def: part.defs[i]
+        };
+    }
+});
+
+const RECIPES = [
+    { targetId: 'potion', ingredients: [{id: 'herb', qty: 2}] },
+    { targetId: 'sword', ingredients: [{id: 'wood', qty: 2}, {id: 'iron_ore', qty: 1}] },
+    { targetId: 'spear', ingredients: [{id: 'wood', qty: 3}, {id: 'iron_ore', qty: 2}] },
+    { targetId: 'bow', ingredients: [{id: 'wood', qty: 4}, {id: 'leather', qty: 1}] },
+    { targetId: 'head_1', ingredients: [{id: 'fabric', qty: 2}] },
+    { targetId: 'chest_1', ingredients: [{id: 'fabric', qty: 4}] },
+    { targetId: 'legs_1', ingredients: [{id: 'fabric', qty: 3}] },
+    { targetId: 'boots_1', ingredients: [{id: 'fabric', qty: 2}] },
+    { targetId: 'head_2', ingredients: [{id: 'leather', qty: 2}] },
+    { targetId: 'chest_2', ingredients: [{id: 'leather', qty: 4}] },
+    { targetId: 'legs_2', ingredients: [{id: 'leather', qty: 3}] },
+    { targetId: 'boots_2', ingredients: [{id: 'leather', qty: 2}] },
+    { targetId: 'head_3', ingredients: [{id: 'iron_ore', qty: 2}, {id: 'leather', qty: 1}] },
+    { targetId: 'chest_3', ingredients: [{id: 'iron_ore', qty: 4}, {id: 'leather', qty: 2}] },
+    { targetId: 'legs_3', ingredients: [{id: 'iron_ore', qty: 3}, {id: 'leather', qty: 1}] },
+    { targetId: 'boots_3', ingredients: [{id: 'iron_ore', qty: 2}, {id: 'leather', qty: 1}] }
+];
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let width, height;
+let lastTime = 0;
+
+const keys = {};
+const mouse = { x: 0, y: 0, worldX: 0, worldY: 0, leftDown: false, rightDown: false };
+
+let moveJx = 0, moveJy = 0; 
+let aimJx = 0, aimJy = 0;
+let isAiming = false;
+let isMobileAttacking = false;
+let isTouchDevice = false;
+
+let player;
+let enemies = [];
+let items = [];
+let interactables = [];
+let projectiles = [];
+let particles = [];
+let mapGrid = [];
+let rooms = [];
+const TILE_SIZE = 64;
+const MAP_COLS = 50;
+const MAP_ROWS = 50;
+let camera = { x: 0, y: 0 };
+
+window.addEventListener('resize', resizeCanvas);
+function resizeCanvas() { width = window.innerWidth; height = window.innerHeight; canvas.width = width; canvas.height = height; }
+resizeCanvas();
+
+window.addEventListener('keydown', e => {
+    keys[e.code] = true;
+    if (currentState === GAME_STATE.PLAYING) {
+        if (e.code.startsWith('Digit') && e.code.length === 6) {
+            let num = parseInt(e.code[5]);
+            if (num >= 1 && num <= 8) useItem('quick', num - 1);
+        }
+        if (e.code === 'Tab' || e.code === 'KeyI' || e.code === 'Escape') {
+            e.preventDefault();
+            const win = document.getElementById('inventoryWindow');
+            if (win.classList.contains('hidden') && e.code !== 'Escape') {
+                openInventory();
+            } else closeInventory();
+        }
+    } else if (currentState === GAME_STATE.TOWN && e.code === 'Escape') {
+        closeInventory();
+        document.getElementById('craftingWindow').classList.add('hidden');
+    }
+});
+window.addEventListener('keyup', e => keys[e.code] = false);
+window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+window.addEventListener('mousedown', e => { if(e.button === 0) mouse.leftDown = true; if(e.button === 2) mouse.rightDown = true; });
+window.addEventListener('mouseup', e => { if(e.button === 0) mouse.leftDown = false; if(e.button === 2) mouse.rightDown = false; });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+function distance(x1, y1, x2, y2) { return Math.hypot(x2 - x1, y2 - y1); }
+function rand(min, max) { return Math.random() * (max - min) + min; }
+function randInt(min, max) { return Math.floor(rand(min, max)); }
+function showToast(msg) {
+    const toast = document.getElementById('toastMsg');
+    toast.innerText = msg; toast.style.opacity = 1;
+    setTimeout(() => toast.style.opacity = 0, 2000);
+}
+
+function getRandomMaterial() {
+    let r = Math.random();
+    if(r < 0.20) return 'herb';
+    if(r < 0.35) return 'fabric';
+    if(r < 0.50) return 'wood';
+    if(r < 0.65) return 'leather';
+    if(r < 0.80) return 'iron_ore';
+    if(r < 0.95) return 'scrap';
+    return 'core';
+}
+
+function initMobileControls() {
+    isTouchDevice = ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+    if (!isTouchDevice) return;
+
+    document.getElementById('mobileControls').classList.remove('hidden');
+
+    function setupJoystick(zoneId, knobId, isLeft) {
+        const jZone = document.getElementById(zoneId);
+        const jKnob = document.getElementById(knobId);
+        let touchId = null, jCenterX = 0, jCenterY = 0;
+
+        jZone.addEventListener('touchstart', e => {
+            e.preventDefault();
+            for(let i=0; i<e.changedTouches.length; i++) {
+                if (touchId === null) {
+                    const touch = e.changedTouches[i];
+                    touchId = touch.identifier;
+                    const rect = jZone.getBoundingClientRect();
+                    jCenterX = rect.left + rect.width / 2;
+                    jCenterY = rect.top + rect.height / 2;
+                    updateJoystick(touch.clientX, touch.clientY);
+                    if(!isLeft) isAiming = true;
+                }
+            }
+        }, {passive: false});
+
+        jZone.addEventListener('touchmove', e => {
+            e.preventDefault();
+            for(let i=0; i<e.changedTouches.length; i++) {
+                if(e.changedTouches[i].identifier === touchId) updateJoystick(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
+            }
+        }, {passive: false});
+
+        jZone.addEventListener('touchend', e => {
+            e.preventDefault();
+            for(let i=0; i<e.changedTouches.length; i++) {
+                if(e.changedTouches[i].identifier === touchId) {
+                    touchId = null; 
+                    if(isLeft) { moveJx = 0; moveJy = 0; }
+                    else { aimJx = 0; aimJy = 0; isAiming = false; }
+                    jKnob.style.transform = `translate(-50%, -50%)`;
+                }
+            }
+        }, {passive: false});
+
+        function updateJoystick(x, y) {
+            let dx = x - jCenterX; let dy = y - jCenterY;
+            let dist = Math.sqrt(dx*dx + dy*dy);
+            let maxDist = 36;
+            if (dist > maxDist) { dx = (dx/dist)*maxDist; dy = (dy/dist)*maxDist; }
+            jKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+            let nx = dx / maxDist, ny = dy / maxDist;
+            if(isLeft) { moveJx = nx; moveJy = ny; }
+            else { aimJx = nx; aimJy = ny; }
+        }
+    }
+
+    setupJoystick('joystickZoneLeft', 'joystickKnobLeft', true);
+    setupJoystick('joystickZoneRight', 'joystickKnobRight', false);
+
+    const btnAtk = document.getElementById('vBtnAttack');
+    btnAtk.addEventListener('touchstart', e => { e.preventDefault(); isMobileAttacking = true; }, {passive: false});
+    btnAtk.addEventListener('touchend', e => { e.preventDefault(); isMobileAttacking = false; }, {passive: false});
+
+    const btnDash = document.getElementById('vBtnDash');
+    btnDash.addEventListener('touchstart', e => { e.preventDefault(); keys['Space'] = true; }, {passive: false});
+    btnDash.addEventListener('touchend', e => { e.preventDefault(); keys['Space'] = false; }, {passive: false});
+
+    const btnInt = document.getElementById('vBtnInteract');
+    btnInt.addEventListener('touchstart', e => { e.preventDefault(); keys['KeyE'] = true; }, {passive: false});
+    btnInt.addEventListener('touchend', e => { e.preventDefault(); setTimeout(()=> keys['KeyE'] = false, 100); }, {passive: false});
+
+    const btnInv = document.getElementById('vBtnInv');
+    btnInv.addEventListener('touchstart', e => {
+        e.preventDefault();
+        if (document.getElementById('inventoryWindow').classList.contains('hidden')) openInventory();
+        else closeInventory();
+    }, {passive: false});
+}
+
+
+class Room {
+    constructor(x, y, w, h) {
+        this.x = x; this.y = y; this.w = w; this.h = h;
+        this.cx = Math.floor(x + w / 2); this.cy = Math.floor(y + h / 2); this.type = 'NORMAL';
+    }
+    intersects(other) { return (this.x <= other.x + other.w && this.x + this.w >= other.x && this.y <= other.y + other.h && this.y + this.h >= other.y); }
+}
+
+function generateMap() {
+    mapGrid = Array.from({length: MAP_ROWS}, () => Array(MAP_COLS).fill(1));
+    rooms = [];
+    const MAX_ROOMS = 8, MIN_SIZE = 5, MAX_SIZE = 10;
+    for (let i = 0; i < MAX_ROOMS * 2 && rooms.length < MAX_ROOMS; i++) {
+        let w = randInt(MIN_SIZE, MAX_SIZE), h = randInt(MIN_SIZE, MAX_SIZE);
+        let x = randInt(1, MAP_COLS - w - 1), y = randInt(1, MAP_ROWS - h - 1);
+        let newRoom = new Room(x, y, w, h);
+        let failed = false;
+        for (let otherRoom of rooms) if (newRoom.intersects(otherRoom)) { failed = true; break; }
+        if (!failed) rooms.push(newRoom);
+    }
+    rooms.forEach(room => { for (let y = room.y; y < room.y + room.h; y++) for (let x = room.x; x < room.x + room.w; x++) mapGrid[y][x] = 0; });
+    for (let i = 1; i < rooms.length; i++) {
+        let r1 = rooms[i - 1], r2 = rooms[i];
+        for (let x = Math.min(r1.cx, r2.cx); x <= Math.max(r1.cx, r2.cx); x++) mapGrid[r1.cy][x] = 0;
+        for (let y = Math.min(r1.cy, r2.cy); y <= Math.max(r1.cy, r2.cy); y++) mapGrid[y][r2.cx] = 0;
+    }
+    rooms[0].type = 'SPAWN'; rooms[rooms.length - 1].type = 'EXIT';
+    enemies = []; items = []; interactables = [];
+    let equipKeys = Object.keys(ITEM_DB).filter(k => ITEM_DB[k].type === ITEM_TYPES.EQUIPMENT);
+    for (let i = 1; i < rooms.length - 1; i++) {
+        let typeRand = Math.random();
+        if (typeRand < 0.5) rooms[i].type = 'COMBAT'; else if (typeRand < 0.8) rooms[i].type = 'LOOT';
+        if (rooms[i].type === 'COMBAT' || rooms[i].type === 'NORMAL') {
+            let count = randInt(1, 4);
+            for(let j=0; j<count; j++) enemies.push(new Enemy((rooms[i].x + rand(1, rooms[i].w - 1)) * TILE_SIZE, (rooms[i].y + rand(1, rooms[i].h - 1)) * TILE_SIZE, Math.random() < 0.3));
+        }
+        if (rooms[i].type === 'LOOT' || Math.random() < 0.3) {
+            let cx = (rooms[i].cx + rand(-1, 1)) * TILE_SIZE, cy = (rooms[i].cy + rand(-1, 1)) * TILE_SIZE;
+            let chestItems = new Array(6).fill(null);
+            let count = randInt(1, 4);
+            for(let j=0; j<count; j++) {
+                let id = Math.random() < 0.1 ? 'relic' : (Math.random() < 0.6 ? getRandomMaterial() : (Math.random() < 0.8 ? 'gold' : (Math.random() < 0.95 ? 'potion' : equipKeys[randInt(0, equipKeys.length)])));
+                let emptyIdx = chestItems.findIndex(i => i === null);
+                if(emptyIdx !== -1) chestItems[emptyIdx] = { data: ITEM_DB[id], revealed: false, progress: 0 };
+            }
+            interactables.push(new Interactable(cx, cy, 'CHEST', { items: chestItems, isOpened: false }));
+        }
+    }
+    let exitRoom = rooms[rooms.length - 1];
+    interactables.push(new Interactable(exitRoom.cx * TILE_SIZE, exitRoom.cy * TILE_SIZE, 'EXIT'));
+    if (metaData.lastDeathCorpse) {
+        interactables.push(new Interactable((rooms[0].cx + 1) * TILE_SIZE, rooms[0].cy * TILE_SIZE, 'CORPSE', metaData.lastDeathCorpse));
+        metaData.lastDeathCorpse = null;
+    }
+}
+
+function checkWallCollision(x, y, radius) {
+    let startCol = Math.floor((x - radius) / TILE_SIZE), endCol = Math.floor((x + radius) / TILE_SIZE);
+    let startRow = Math.floor((y - radius) / TILE_SIZE), endRow = Math.floor((y + radius) / TILE_SIZE);
+    for (let r = startRow; r <= endRow; r++) {
+        for (let c = startCol; c <= endCol; c++) {
+            if (r >= 0 && r < MAP_ROWS && c >= 0 && c < MAP_COLS) { if (mapGrid[r][c] === 1) return true; } else return true;
+        }
+    }
+    return false;
+}
+
+class Player {
+    constructor(x, y) {
+        this.x = x; this.y = y; this.radius = 16; this.speed = 200;
+        this.baseMaxHp = 100 + (metaData.upgrades.workbench - 1) * 20; this.hp = this.baseMaxHp;
+        this.baseMaxSp = 100 + (metaData.upgrades.workbench - 1) * 10; this.sp = this.baseMaxSp;
+        this.dashSpeed = 600; this.dashTime = 0; this.dashDir = {x:0, y:0}; this.dashCooldown = 0;
+        this.attackCooldown = 0; this.isAttacking = false; this.attackAngle = 0; this.invulnerable = 0;
+        this.channeling = 0; this.channelTarget = null; this.lastFacingAngle = 0;
+        this.stepTimer = 0; // 발소리 타이머 추가
+    }
+
+    update(dt) {
+        if (this.dashTime > 0) this.dashTime -= dt; if (this.dashCooldown > 0) this.dashCooldown -= dt;
+        if (this.attackCooldown > 0) this.attackCooldown -= dt; if (this.invulnerable > 0) this.invulnerable -= dt;
+        if (this.dashTime <= 0 && this.sp < this.baseMaxSp) this.sp = Math.min(this.baseMaxSp, this.sp + 20 * dt);
+
+        let dx = moveJx !== 0 ? moveJx : 0;
+        let dy = moveJy !== 0 ? moveJy : 0;
+
+        if (this.channeling <= 0) {
+            if (keys['KeyW']) dy -= 1; if (keys['KeyS']) dy += 1;
+            if (keys['KeyA']) dx -= 1; if (keys['KeyD']) dx += 1;
+        }
+
+        if (this.channeling > 0 && (dx !== 0 || dy !== 0 || mouse.leftDown || isMobileAttacking)) this.cancelChannel();
+        if (dx !== 0 || dy !== 0) { 
+            let len = Math.sqrt(dx*dx + dy*dy); dx /= len; dy /= len; 
+            
+            // 발소리 처리 (이동 중일 때만)
+            if (this.dashTime <= 0) {
+                this.stepTimer += dt;
+                if (this.stepTimer >= 0.35) { // 0.35초 마다 한 걸음
+                    AudioManager.play('step');
+                    this.stepTimer = 0;
+                }
+            }
+        } else {
+            this.stepTimer = 0.35; // 정지 시 타이머 초기화 (다음 이동시 바로 소리 나도록)
+        }
+
+        if (isAiming && (aimJx !== 0 || aimJy !== 0)) { this.lastFacingAngle = Math.atan2(aimJy, aimJx); }
+
+        if (keys['Space'] && this.dashCooldown <= 0 && this.sp >= 30 && this.channeling <= 0) {
+            if (dx === 0 && dy === 0) { dx = Math.cos(this.lastFacingAngle); dy = Math.sin(this.lastFacingAngle); }
+            this.dashTime = 0.2; this.dashCooldown = 1.0; this.sp -= 30;
+            this.dashDir = {x: dx, y: dy}; this.invulnerable = 0.2;
+            AudioManager.play('dash'); // 대시 사운드 재생
+            createParticles(this.x, this.y, '#fff', 5);
+        }
+
+        let moveX = this.dashTime > 0 ? this.dashDir.x * this.dashSpeed * dt : dx * this.speed * dt;
+        let moveY = this.dashTime > 0 ? this.dashDir.y * this.dashSpeed * dt : dy * this.speed * dt;
+
+        if (!checkWallCollision(this.x + moveX, this.y, this.radius)) this.x += moveX;
+        if (!checkWallCollision(this.x, this.y + moveY, this.radius)) this.y += moveY;
+
+        let isUIOpen = !document.getElementById('inventoryWindow').classList.contains('hidden');
+        if ((mouse.leftDown || isMobileAttacking) && this.attackCooldown <= 0 && this.channeling <= 0 && !isUIOpen) {
+            this.isAttacking = true; 
+            let wId = runData.equipment.weapon ? runData.equipment.weapon.id : 'unarmed';
+            
+            // 재생 무기 사운드
+            AudioManager.play(wId === 'unarmed' ? 'sword' : wId);
+            
+            if (isTouchDevice) this.attackAngle = this.lastFacingAngle; 
+            else this.attackAngle = Math.atan2(mouse.worldY - this.y, mouse.worldX - this.x);
+
+            if (wId === 'bow') {
+                this.attackCooldown = 0.8; setTimeout(() => this.isAttacking = false, 150);
+                projectiles.push(new Projectile(this.x, this.y, this.attackAngle, 500, 25, true));
+            } else {
+                let attackRange = 40, hitArc = Math.PI / 2, dmg = 15;
+                if (wId === 'sword') { this.attackCooldown = 0.6; attackRange = 70; hitArc = Math.PI / 1.5; dmg = 35; }
+                else if (wId === 'spear') { this.attackCooldown = 0.7; attackRange = 110; hitArc = Math.PI / 6; dmg = 30; }
+                else { this.attackCooldown = 0.5; }
+
+                setTimeout(() => this.isAttacking = false, 150);
+                enemies.forEach(e => {
+                    if (distance(this.x, this.y, e.x, e.y) < attackRange) {
+                        let angleDiff = Math.abs(Math.atan2(e.y - this.y, e.x - this.x) - this.attackAngle);
+                        if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
+                        if (angleDiff < hitArc / 2) { e.takeDamage(dmg); createParticles(e.x, e.y, '#f00', 5); }
+                    }
+                });
+            }
+        }
+    }
+
+    getDefense() { let def = 0; ['head', 'chest', 'legs', 'boots'].forEach(s => { if(runData.equipment[s]) def += runData.equipment[s].def; }); return def; }
+    takeDamage(amt) {
+        if (this.invulnerable > 0 || currentState !== GAME_STATE.PLAYING) return;
+        AudioManager.play('hit');
+        this.hp -= Math.max(1, amt - this.getDefense()); this.invulnerable = 0.5; this.cancelChannel();
+        createParticles(this.x, this.y, '#f00', 10); updateHUD();
+        if (this.hp <= 0) endRun(false);
+    }
+    heal(amt) { this.hp = Math.min(this.baseMaxHp, this.hp + amt); createParticles(this.x, this.y, '#0f0', 10); showToast("체력 회복!"); updateHUD(); }
+    cancelChannel() { if (this.channeling > 0) { this.channeling = 0; this.channelTarget = null; document.getElementById('channelingUI').classList.add('hidden'); } }
+    draw(ctx) {
+        if (this.invulnerable > 0 && Math.floor(Date.now() / 100) % 2 === 0) return;
+        let aimAngle = isTouchDevice ? this.lastFacingAngle : Math.atan2(mouse.worldY - this.y, mouse.worldX - this.x); 
+        if (this.isAttacking) {
+            let wId = runData.equipment.weapon ? runData.equipment.weapon.id : 'unarmed';
+            ctx.beginPath();
+            if (wId === 'spear') { ctx.moveTo(this.x, this.y); ctx.lineTo(this.x + Math.cos(this.attackAngle) * 110, this.y + Math.sin(this.attackAngle) * 110); ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'; ctx.lineWidth = 4; ctx.stroke(); } 
+            else if (wId !== 'bow') { let r = wId === 'sword' ? 70 : 40, arc = wId === 'sword' ? Math.PI/1.5 : Math.PI/2; ctx.arc(this.x, this.y, r, this.attackAngle - arc/2, this.attackAngle + arc/2); ctx.lineTo(this.x, this.y); ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'; ctx.fill(); }
+        }
+        ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fillStyle = '#3b82f6'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(this.x + Math.cos(aimAngle) * this.radius * 1.5, this.y + Math.sin(aimAngle) * this.radius * 1.5); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke();
+    }
+}
+
+class Enemy {
+    constructor(x, y, isRanged) {
+        this.x = x; this.y = y; this.isRanged = isRanged; this.radius = 14;
+        this.maxHp = isRanged ? 40 : 60; this.hp = this.maxHp;
+        this.speed = isRanged ? 70 : 120; this.aggroRange = 350; this.attackRange = isRanged ? 250 : 30;
+        this.attackCooldown = 0; this.state = 'IDLE';
+        this.stepTimer = Math.random() * 0.4; // 적군들의 발소리가 겹치지 않게 초기 타이머 랜덤화
+    }
+    update(dt) {
+        if (this.attackCooldown > 0) this.attackCooldown -= dt;
+        let dist = distance(this.x, this.y, player.x, player.y);
+        this.state = dist < this.aggroRange ? 'CHASE' : 'IDLE';
+        if (this.state === 'CHASE') {
+            let vol = Math.max(0, 1 - (dist / 400)); // 거리 비례 볼륨
+            
+            if (dist > this.attackRange) {
+                let angle = Math.atan2(player.y - this.y, player.x - this.x);
+                let moveX = Math.cos(angle) * this.speed * dt, moveY = Math.sin(angle) * this.speed * dt;
+                if (!checkWallCollision(this.x + moveX, this.y, this.radius)) this.x += moveX;
+                if (!checkWallCollision(this.x, this.y + moveY, this.radius)) this.y += moveY;
+                
+                // 적군 발소리 처리
+                this.stepTimer += dt;
+                if (this.stepTimer > 0.4) {
+                    if (vol > 0) AudioManager.play('step', vol * 0.6); // 플레이어보다 살짝 작게
+                    this.stepTimer = 0;
+                }
+            } else {
+                this.stepTimer = 0.4;
+                if (this.attackCooldown <= 0) {
+                    if (this.isRanged) { 
+                        this.attackCooldown = 2.0; 
+                        AudioManager.play('enemy_ranged', vol); // 원거리 공격 소리
+                        projectiles.push(new Projectile(this.x, this.y, Math.atan2(player.y - this.y, player.x - this.x), 200, 15, false)); 
+                    } else { 
+                        this.attackCooldown = 1.0; 
+                        AudioManager.play('enemy_melee', vol); // 근접 공격 소리
+                        player.takeDamage(15); 
+                    }
+                }
+            }
+        }
+    }
+    takeDamage(amt) {
+        AudioManager.play('hit');
+        this.hp -= amt; this.state = 'CHASE';
+        if (this.hp <= 0 && Math.random() < 0.6) {
+            let id = Math.random() < 0.2 ? 'potion' : (Math.random() < 0.8 ? getRandomMaterial() : 'gold');
+            items.push(new ItemDrop(this.x, this.y, ITEM_DB[id]));
+        }
+    }
+    draw(ctx) {
+        ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fillStyle = this.isRanged ? '#9333ea' : '#ef4444'; ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.stroke();
+        if (this.hp < this.maxHp) { ctx.fillStyle = 'black'; ctx.fillRect(this.x - 15, this.y - 25, 30, 4); ctx.fillStyle = 'red'; ctx.fillRect(this.x - 15, this.y - 25, 30 * (this.hp / this.maxHp), 4); }
+    }
+}
+
+class Projectile {
+    constructor(x, y, angle, speed, damage, isPlayerOwned) {
+        this.x = x; this.y = y; this.vx = Math.cos(angle) * speed; this.vy = Math.sin(angle) * speed;
+        this.damage = damage; this.isPlayerOwned = isPlayerOwned; this.radius = 4; this.life = 2.0;
+    }
+    update(dt) {
+        this.x += this.vx * dt; this.y += this.vy * dt; this.life -= dt;
+        if (checkWallCollision(this.x, this.y, this.radius)) this.life = 0;
+        if (!this.isPlayerOwned) { if (distance(this.x, this.y, player.x, player.y) < player.radius + this.radius) { player.takeDamage(this.damage); this.life = 0; } } 
+        else { enemies.forEach(e => { if (distance(this.x, this.y, e.x, e.y) < e.radius + this.radius) { e.takeDamage(this.damage); createParticles(e.x, e.y, '#f00', 5); this.life = 0; } }); }
+    }
+    draw(ctx) { ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fillStyle = '#ff0'; ctx.fill(); }
+}
+
+class ItemDrop {
+    constructor(x, y, itemData) { this.x = x; this.y = y; this.data = itemData; this.floatY = 0; this.time = Math.random() * 100; }
+    update(dt) { this.time += dt * 5; this.floatY = Math.sin(this.time) * 5; }
+    draw(ctx) { ctx.font = '20px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(this.data.emoji, this.x, this.y + this.floatY); }
+}
+
+class Interactable {
+    constructor(x, y, type, data = null) { this.x = x; this.y = y; this.type = type; this.active = true; this.data = data; }
+    draw(ctx) {
+        if (!this.active) return;
+        ctx.save(); ctx.translate(this.x, this.y);
+        if (this.type === 'CHEST') { ctx.fillStyle = '#8B4513'; ctx.fillRect(-16, -16, 32, 32); ctx.fillStyle = '#D2691E'; ctx.fillRect(-14, -14, 28, 28); if (!this.data || !this.data.isOpened) { ctx.fillStyle = '#DAA520'; ctx.fillRect(-4, -2, 8, 4); } } 
+        else if (this.type === 'EXIT') { ctx.fillStyle = 'rgba(34, 197, 94, 0.4)'; ctx.fillRect(-TILE_SIZE/2, -TILE_SIZE/2, TILE_SIZE, TILE_SIZE); ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 2; ctx.strokeRect(-TILE_SIZE/2, -TILE_SIZE/2, TILE_SIZE, TILE_SIZE); ctx.fillStyle = '#22c55e'; ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI*2); ctx.fill(); } 
+        else if (this.type === 'CORPSE') { ctx.fillStyle = '#666'; ctx.beginPath(); ctx.roundRect(-12, -20, 24, 32, 8); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = '10px Arial'; ctx.textAlign = 'center'; ctx.fillText('RIP', 0, -5); }
+        ctx.restore();
+    }
+}
+
+class Particle {
+    constructor(x, y, color, speed) {
+        this.x = x; this.y = y; let angle = Math.random() * Math.PI * 2; let s = Math.random() * speed;
+        this.vx = Math.cos(angle) * s; this.vy = Math.sin(angle) * s; this.color = color; this.life = 1.0; this.size = Math.random() * 3 + 1;
+    }
+    update(dt) { this.x += this.vx * dt; this.y += this.vy * dt; this.life -= dt * 2; }
+    draw(ctx) { ctx.globalAlpha = Math.max(0, this.life); ctx.fillStyle = this.color; ctx.fillRect(this.x, this.y, this.size, this.size); ctx.globalAlpha = 1.0; }
+}
+
+function createParticles(x, y, color, count) { for(let i=0; i<count; i++) particles.push(new Particle(x, y, color, 50)); }
+
+// --- UI / 인벤토리 / 창고 시스템 ---
+let draggedItemInfo = null;
+let selectedMobileSlot = null; 
+
+function openInventory() {
+    document.getElementById('invWindowTitle').innerText = "내 소지품";
+    document.getElementById('inventoryWindow').classList.remove('hidden');
+    document.getElementById('stashSection').classList.add('hidden');
+    document.getElementById('lootSection').classList.add('hidden');
+    currentLootContainer = null;
+    updateAllUI();
+}
+
+function closeInventory() {
+    document.getElementById('inventoryWindow').classList.add('hidden');
+    document.getElementById('stashSection').classList.add('hidden');
+    document.getElementById('lootSection').classList.add('hidden');
+    currentLootContainer = null; draggedItemInfo = null; selectedMobileSlot = null; 
+    clearItemInfo();
+    document.getElementById('btnMobileDrop').classList.add('hidden');
+    mouse.leftDown = false; mouse.rightDown = false;
+}
+
+function allowDrop(e) { e.preventDefault(); }
+function handleDragStart(e, type, index) { draggedItemInfo = { type, index }; e.dataTransfer.setData('text/plain', ''); e.dataTransfer.effectAllowed = 'move'; }
+
+function getArrRef(type) {
+    if(type === 'inv') return runData.inventory;
+    if(type === 'quick') return runData.quickSlots;
+    if(type === 'stash') return metaData.stash;
+    if(type === 'container' && currentLootContainer) return currentLootContainer.data.items;
+    return null;
+}
+
+function handleDrop(e, targetType, targetIndex) {
+    if(e) { e.preventDefault(); e.stopPropagation(); }
+    if (!draggedItemInfo) return;
+
+    let sourceItemObj = draggedItemInfo.type === 'equip' ? runData.equipment[draggedItemInfo.index] : (draggedItemInfo.type === 'container' ? getArrRef('container')[draggedItemInfo.index]?.data : getArrRef(draggedItemInfo.type)[draggedItemInfo.index]);
+    let targetItemObj = targetType === 'equip' ? runData.equipment[targetIndex] : (targetType === 'container' ? getArrRef('container')[targetIndex]?.data : getArrRef(targetType)[targetIndex]);
+
+    if (targetType === 'container' && getArrRef('container')[targetIndex] && !getArrRef('container')[targetIndex].revealed) { showToast("아직 탐색되지 않은 슬롯입니다."); return; }
+    if (targetType === 'equip' && sourceItemObj && (sourceItemObj.type !== ITEM_TYPES.EQUIPMENT || sourceItemObj.slot !== targetIndex)) { showToast("장착할 수 없는 아이템입니다."); return; }
+    if (draggedItemInfo.type === 'equip' && targetItemObj && (targetItemObj.type !== ITEM_TYPES.EQUIPMENT || targetItemObj.slot !== draggedItemInfo.index)) { showToast("장착할 수 없는 아이템입니다."); return; }
+
+    if (targetType === 'equip') runData.equipment[targetIndex] = sourceItemObj;
+    else if (targetType === 'container') getArrRef('container')[targetIndex] = sourceItemObj ? { data: sourceItemObj, revealed: true, progress: 2.0 } : null;
+    else getArrRef(targetType)[targetIndex] = sourceItemObj;
+
+    if (draggedItemInfo.type === 'equip') runData.equipment[draggedItemInfo.index] = targetItemObj;
+    else if (draggedItemInfo.type === 'container') getArrRef('container')[draggedItemInfo.index] = targetItemObj ? { data: targetItemObj, revealed: true, progress: 2.0 } : null;
+    else getArrRef(draggedItemInfo.type)[draggedItemInfo.index] = targetItemObj;
+
+    // 아이템 이동 및 장착에 따른 사운드 분기
+    if (targetType === 'equip' || draggedItemInfo.type === 'equip') {
+        AudioManager.play('equip');
+    } else {
+        AudioManager.play('inv_move');
+    }
+
+    draggedItemInfo = null; updateAllUI(); updateHUD();
+}
+
+function handleDropOutside(e) {
+    if(e) e.preventDefault();
+    if (!draggedItemInfo) return;
+    let itemObj = draggedItemInfo.type === 'equip' ? runData.equipment[draggedItemInfo.index] : (draggedItemInfo.type === 'container' ? getArrRef('container')[draggedItemInfo.index]?.data : getArrRef(draggedItemInfo.type)[draggedItemInfo.index]);
+    
+    if (itemObj) {
+        if(draggedItemInfo.type === 'equip') runData.equipment[draggedItemInfo.index] = null;
+        else if(draggedItemInfo.type === 'container') getArrRef('container')[draggedItemInfo.index] = null;
+        else getArrRef(draggedItemInfo.type)[draggedItemInfo.index] = null;
+        
+        AudioManager.play('drop');
+        if (currentState === GAME_STATE.PLAYING) { items.push(new ItemDrop(player.x + rand(-20, 20), player.y + rand(-20, 20), itemObj)); showToast(`${itemObj.name} 버림`); } 
+        else { showToast(`[파기됨] ${itemObj.name}`); }
+    }
+    draggedItemInfo = null; updateAllUI(); updateHUD();
+}
+
+function handleMobileSlotClick(e, type, index) {
+    if(e) e.preventDefault();
+    let arr = getArrRef(type);
+    let itemObj = null;
+
+    if (type === 'equip') itemObj = runData.equipment[index];
+    else if (type === 'container') itemObj = arr[index]?.revealed ? arr[index].data : null;
+    else itemObj = arr[index];
+
+    if (type === 'container' && arr[index] && !arr[index].revealed) return;
+
+    if (!selectedMobileSlot) {
+        if (itemObj) {
+            selectedMobileSlot = { type, index };
+            updateAllUI();
+            showItemInfo(itemObj);
+            document.getElementById('btnMobileDrop').classList.remove('hidden');
+        }
+    } else {
+        if (selectedMobileSlot.type === type && selectedMobileSlot.index === index) {
+            useItem(type, index);
+            selectedMobileSlot = null;
+            clearItemInfo();
+            document.getElementById('btnMobileDrop').classList.add('hidden');
+        } else {
+            draggedItemInfo = { type: selectedMobileSlot.type, index: selectedMobileSlot.index };
+            handleDrop(null, type, index);
+            selectedMobileSlot = null;
+            document.getElementById('btnMobileDrop').classList.add('hidden');
+            clearItemInfo();
+        }
+        updateAllUI();
+    }
+}
+
+document.getElementById('btnMobileDrop').addEventListener('click', (e) => {
+    e.preventDefault();
+    if (selectedMobileSlot) {
+        draggedItemInfo = { type: selectedMobileSlot.type, index: selectedMobileSlot.index };
+        handleDropOutside(null);
+        selectedMobileSlot = null;
+        document.getElementById('btnMobileDrop').classList.add('hidden');
+        clearItemInfo();
+    }
+});
+
+
+function tryPickupItem(itemObj) {
+    let emptyIdx = runData.inventory.findIndex(i => i === null);
+    if (emptyIdx !== -1) { 
+        runData.inventory[emptyIdx] = itemObj.data; 
+        updateAllUI(); createParticles(itemObj.x, itemObj.y, '#fff', 5); 
+        AudioManager.play('pick');
+        return true; 
+    }
+    showToast("가방이 가득 찼습니다!"); return false;
+}
+
+function useItem(type, index) {
+    if (type === 'equip') {
+        let itemObj = runData.equipment[index]; if (!itemObj) return;
+        let emptyIdx = runData.inventory.findIndex(i => i === null);
+        if (emptyIdx !== -1) { 
+            runData.inventory[emptyIdx] = itemObj; runData.equipment[index] = null; 
+            AudioManager.play('equip'); // 해제 소리
+            updateAllUI(); updateHUD(); 
+        } 
+        else showToast("가방에 빈 공간이 없습니다.");
+        return;
+    }
+    let arr = getArrRef(type); if(!arr) return;
+    let itemObj = type === 'container' ? arr[index]?.data : arr[index];
+
+    if (itemObj && itemObj.type === ITEM_TYPES.EQUIPMENT) {
+        let currentEquip = runData.equipment[itemObj.slot];
+        runData.equipment[itemObj.slot] = itemObj;
+        if(type === 'container') arr[index] = currentEquip ? { data: currentEquip, revealed: true, progress: 2.0 } : null;
+        else arr[index] = currentEquip;
+        AudioManager.play('equip'); // 장착 소리
+        updateAllUI(); updateHUD(); return;
+    }
+    if (itemObj && itemObj.type === ITEM_TYPES.CONSUMABLE && currentState === GAME_STATE.PLAYING && player.hp < player.baseMaxHp) {
+        player.heal(40); arr[index] = null; updateAllUI();
+        AudioManager.play('ui'); // 소모품 사용 소리
+    } else if (itemObj && itemObj.type !== ITEM_TYPES.CONSUMABLE) { showToast("소비할 수 없거나, 이곳에선 쓸 수 없습니다."); }
+}
+
+function showItemInfo(itemObj) {
+    if (!itemObj) { clearItemInfo(); return; }
+    document.getElementById('infoName').innerText = `${itemObj.emoji} ${itemObj.name}`;
+    document.getElementById('infoDesc').innerText = itemObj.desc || "정보 없음";
+}
+function clearItemInfo() { 
+    document.getElementById('infoName').innerText = '아이템을 선택하세요'; 
+    document.getElementById('infoDesc').innerText = isTouchDevice ? '한 번 터치: 선택 / 두 번 터치: 장착 및 사용' : '우클릭으로 장착/사용, 드래그 앤 드롭으로 이동'; 
+}
+
+function createSlotHTML(type, index, slotData, label, isHUD = false) {
+    let slot = document.createElement('div');
+    if (type === 'container') slot.id = `loot-slot-${index}`;
+    let baseClass = type === 'quick' ? 'w-10 h-10 md:w-12 md:h-12 text-xl md:text-2xl' : type === 'stash' ? 'w-8 h-8 md:w-10 md:h-10 text-lg md:text-xl' : 'w-12 h-12 md:w-14 md:h-14 text-2xl md:text-3xl';
+    let itemObj = type === 'container' ? (slotData?.revealed ? slotData.data : null) : slotData;
+
+    if (type === 'container' && slotData && !slotData.revealed) {
+        slot.className = `inv-slot bg-gray-800 shadow-inner flex items-center justify-center relative overflow-hidden ${baseClass}`;
+        slot.innerHTML = `<span class="text-gray-500 font-bold text-lg animate-pulse">?</span>`;
+        let pBar = document.createElement('div'); pBar.className = "search-bar absolute bottom-0 left-0 h-1 bg-yellow-500 transition-none"; pBar.style.width = `${(slotData.progress / 1.5) * 100}%`; slot.appendChild(pBar);
+        return slot;
+    }
+
+    if (itemObj) {
+        slot.className = `inv-slot bg-gray-700 shadow-inner cursor-pointer hover:bg-gray-500 transition flex items-center justify-center relative ${baseClass}`;
+        slot.draggable = true; slot.innerHTML = `<span>${itemObj.emoji}</span>`;
+        
+        if (isHUD) {
+            slot.addEventListener('touchstart', e => { e.preventDefault(); useItem(type, index); }, {passive: false});
+            slot.addEventListener('mousedown', e => { e.preventDefault(); useItem(type, index); });
+        } else {
+            if (isTouchDevice) {
+                slot.addEventListener('touchstart', (e) => handleMobileSlotClick(e, type, index), {passive: false});
+            } else {
+                slot.oncontextmenu = (e) => { e.preventDefault(); useItem(type, index); };
+                slot.addEventListener('dragstart', (e) => handleDragStart(e, type, index));
+                slot.onmouseenter = () => showItemInfo(itemObj); slot.onmouseleave = () => { if(!selectedMobileSlot) clearItemInfo(); };
+            }
+        }
+    } else {
+        slot.className = `inv-slot empty flex items-center justify-center relative ${baseClass}`;
+        if (!isHUD) {
+            if (isTouchDevice) {
+                slot.addEventListener('touchstart', (e) => handleMobileSlotClick(e, type, index), {passive: false});
+            } else {
+                slot.onmouseenter = () => { if(!selectedMobileSlot) clearItemInfo(); };
+            }
+        }
+    }
+    
+    if (selectedMobileSlot && selectedMobileSlot.type === type && selectedMobileSlot.index === index) {
+        slot.classList.add('border-blue-500', 'border-4');
+        slot.classList.remove('border-2', 'border-[#555]');
+    }
+
+    if (label) {
+        let lbl = document.createElement('span'); lbl.className = 'absolute top-0 left-1 text-[9px] md:text-[11px] text-yellow-400 font-bold drop-shadow pointer-events-none';
+        lbl.innerText = label; slot.appendChild(lbl);
+    }
+    
+    if (!isHUD && !isTouchDevice) {
+        slot.addEventListener('dragover', allowDrop); slot.addEventListener('drop', (e) => handleDrop(e, type, index));
+    }
+    return slot;
+}
+
+function updateAllUI() {
+    const quickHUD = document.getElementById('quickSlotHUDContainer');
+    if (quickHUD) { quickHUD.innerHTML = ''; for(let i=0; i<8; i++) quickHUD.appendChild(createSlotHTML('quick', i, runData.quickSlots[i], i+1, true)); }
+    
+    const equipGrid = document.getElementById('equipGrid');
+    if (equipGrid) {
+        equipGrid.innerHTML = ''; const sNames = { head: '머리', chest: '가슴', legs: '하의', boots: '신발', weapon: '무기' };
+        ['head', 'chest', 'legs', 'boots', 'weapon'].forEach(k => equipGrid.appendChild(createSlotHTML('equip', k, runData.equipment[k], sNames[k])));
+    }
+
+    const invGrid = document.getElementById('invGrid'), quickGrid = document.getElementById('quickSlotGrid');
+    if (invGrid && quickGrid) {
+        invGrid.innerHTML = ''; for(let i=0; i<runData.maxSlots; i++) invGrid.appendChild(createSlotHTML('inv', i, runData.inventory[i], null));
+        quickGrid.innerHTML = ''; for(let i=0; i<8; i++) quickGrid.appendChild(createSlotHTML('quick', i, runData.quickSlots[i], i+1));
+    }
+
+    const stashGrid = document.getElementById('stashGrid');
+    if (stashGrid && !document.getElementById('stashSection').classList.contains('hidden')) {
+        stashGrid.innerHTML = ''; for(let i=0; i<metaData.stash.length; i++) stashGrid.appendChild(createSlotHTML('stash', i, metaData.stash[i], null));
+    }
+    updateLootUI();
+}
+
+function updateLootUI() {
+    const lootGrid = document.getElementById('lootGrid');
+    if (lootGrid && currentLootContainer) { lootGrid.innerHTML = ''; for(let i=0; i<6; i++) lootGrid.appendChild(createSlotHTML('container', i, currentLootContainer.data.items[i], null)); }
+}
+
+document.getElementById('btnCloseInv').addEventListener('click', closeInventory);
+document.getElementById('btnSellStash').addEventListener('click', () => {
+    let soldVal = 0, soldMat = 0;
+    for(let i=0; i<metaData.stash.length; i++){
+        let item = metaData.stash[i];
+        if(item && (item.id === 'scrap' || item.id === 'core')) { soldMat += item.value; metaData.stash[i] = null; }
+        else if(item && item.type === ITEM_TYPES.VALUABLE) { soldVal += item.value; metaData.stash[i] = null; }
+    }
+    if(soldVal > 0 || soldMat > 0) {
+        metaData.valuables += soldVal; metaData.materials += soldMat;
+        showToast(`판매 완료! 귀중품 +${soldVal}, 업그레이드 재료 +${soldMat}`); updateAllUI(); 
+        document.getElementById('townValuables').innerText = metaData.valuables; document.getElementById('townMaterials').innerText = metaData.materials;
+    } else showToast("창고에 환전할 재화(유물, 금화, 고철 등)가 없습니다.");
+});
+
+function updateHUD() {
+    if (currentState !== GAME_STATE.PLAYING || !player) return;
+    document.getElementById('hpBar').style.width = `${(player.hp / player.baseMaxHp) * 100}%`; document.getElementById('hpText').innerText = `${Math.floor(player.hp)}/${player.baseMaxHp}`;
+    document.getElementById('spBar').style.width = `${(player.sp / player.baseMaxSp) * 100}%`; document.getElementById('defText').innerText = `DEF ${player.getDefense()}`;
+    const ui = document.getElementById('channelingUI');
+    if (player.channeling > 0) { ui.classList.remove('hidden'); document.getElementById('channelBar').style.width = `${((3.0 - player.channeling) / 3.0) * 100}%`; } 
+    else ui.classList.add('hidden');
+}
+
+function handleInteractions() {
+    if (currentState !== GAME_STATE.PLAYING) return;
+    let closest = null, minDist = 50;
+    items.forEach(item => { let d = distance(player.x, player.y, item.x, item.y); if (d < minDist) { minDist = d; closest = { type: 'ITEM', obj: item }; } });
+    interactables.forEach(obj => { if (!obj.active) return; let d = distance(player.x, player.y, obj.x, obj.y); if (d < minDist + 20) { minDist = d; closest = { type: 'OBJ', obj: obj }; } });
+
+    const prompt = document.getElementById('interactPrompt'), text = document.getElementById('interactText');
+    if (closest) {
+        prompt.classList.remove('hidden');
+        if (closest.type === 'ITEM') text.innerText = `줍기: ${closest.obj.data.name}`;
+        if (closest.type === 'OBJ') {
+            if (closest.obj.type === 'CHEST') text.innerText = "상자 열기";
+            if (closest.obj.type === 'EXIT') text.innerText = "탈출 (3초)";
+            if (closest.obj.type === 'CORPSE') text.innerText = "유실물 회수";
+        }
+        if (keys['KeyE']) {
+            keys['KeyE'] = false;
+            if (closest.type === 'ITEM') { if (tryPickupItem(closest.obj)) items = items.filter(i => i !== closest.obj); } 
+            else if (closest.type === 'OBJ') {
+                if (closest.obj.type === 'CHEST') {
+                    currentLootContainer = closest.obj; closest.obj.data.isOpened = true;
+                    document.getElementById('invWindowTitle').innerText = "상자 탐색 중";
+                    document.getElementById('inventoryWindow').classList.remove('hidden');
+                    document.getElementById('stashSection').classList.add('hidden');
+                    document.getElementById('lootSection').classList.remove('hidden');
+                    document.getElementById('dropOutsideHint').classList.add('hidden');
+                    updateAllUI();
+                } else if (closest.obj.type === 'EXIT') {
+                    if (player.channeling <= 0) { player.channeling = 3.0; player.channelTarget = closest.obj; document.getElementById('channelingUI').classList.remove('hidden'); }
+                } else if (closest.obj.type === 'CORPSE') {
+                    closest.obj.active = false; createParticles(closest.obj.x, closest.obj.y, '#999', 15);
+                    closest.obj.data.items.forEach(itemData => items.push(new ItemDrop(closest.obj.x + rand(-20,20), closest.obj.y + rand(-20,20), itemData))); showToast("유실물을 찾았습니다!");
+                }
+            }
+        }
+    } else prompt.classList.add('hidden');
+
+    if (player.channeling > 0) { player.channeling -= 1/60; if (player.channeling <= 0) endRun(true); }
+}
+
+function resizeInventory() {
+    let newMaxSlots = 6 + (metaData.upgrades.warehouse - 1) * 2;
+    if (newMaxSlots > runData.maxSlots) {
+        let diff = newMaxSlots - runData.maxSlots;
+        for(let i=0; i<diff; i++) runData.inventory.push(null); runData.maxSlots = newMaxSlots;
+    }
+}
+
+function initTown() {
+    currentState = GAME_STATE.TOWN;
+    document.getElementById('screenTown').classList.remove('hidden'); document.getElementById('screenHUD').classList.add('hidden');
+    document.getElementById('screenResult').classList.add('hidden'); document.getElementById('channelingUI').classList.add('hidden');
+    closeInventory(); resizeInventory(); 
+    
+    document.getElementById('townValuables').innerText = metaData.valuables; document.getElementById('townMaterials').innerText = metaData.materials;
+    document.getElementById('whLevel').innerText = metaData.upgrades.warehouse; document.getElementById('whCostVal').innerText = metaData.upgrades.warehouse * 100; document.getElementById('whCostMat').innerText = metaData.upgrades.warehouse * 50;
+    document.getElementById('wbLevel').innerText = metaData.upgrades.workbench; document.getElementById('wbCostVal').innerText = metaData.upgrades.workbench * 150; document.getElementById('wbCostMat').innerText = metaData.upgrades.workbench * 100;
+}
+
+document.getElementById('btnOpenStashTown').addEventListener('click', () => {
+    document.getElementById('invWindowTitle').innerText = "창고 및 장비 관리";
+    document.getElementById('inventoryWindow').classList.remove('hidden');
+    document.getElementById('lootSection').classList.add('hidden');
+    document.getElementById('stashSection').classList.remove('hidden');
+    document.getElementById('dropOutsideHint').classList.remove('hidden');
+    updateAllUI();
+});
+
+// --- 제작(Crafting) 시스템 구현 ---
+document.getElementById('btnOpenCrafting').addEventListener('click', openCraftingMenu);
+document.getElementById('btnCloseCrafting').addEventListener('click', () => { document.getElementById('craftingWindow').classList.add('hidden'); });
+
+function getTotalItemCount(itemId) {
+    let count = 0;
+    runData.inventory.forEach(i => { if(i && i.id === itemId) count++; });
+    metaData.stash.forEach(i => { if(i && i.id === itemId) count++; });
+    return count;
+}
+
+function consumeItems(itemId, qty) {
+    let remaining = qty;
+    for(let i=0; i<runData.inventory.length && remaining>0; i++) {
+        if(runData.inventory[i] && runData.inventory[i].id === itemId) { runData.inventory[i] = null; remaining--; }
+    }
+    for(let i=0; i<metaData.stash.length && remaining>0; i++) {
+        if(metaData.stash[i] && metaData.stash[i].id === itemId) { metaData.stash[i] = null; remaining--; }
+    }
+}
+
+function giveCraftedItem(itemData) {
+    let emptyInv = runData.inventory.findIndex(i => i === null);
+    if(emptyInv !== -1) { runData.inventory[emptyInv] = itemData; return true; }
+    let emptyStash = metaData.stash.findIndex(i => i === null);
+    if(emptyStash !== -1) { metaData.stash[emptyStash] = itemData; return true; }
+    return false;
+}
+
+function openCraftingMenu() {
+    document.getElementById('craftingWindow').classList.remove('hidden');
+    const listEl = document.getElementById('recipeList');
+    listEl.innerHTML = '';
+    
+    RECIPES.forEach((recipe, idx) => {
+        const itemData = ITEM_DB[recipe.targetId];
+        let li = document.createElement('li');
+        li.className = "recipe-item p-2 md:p-3 bg-gray-800 rounded border border-gray-700 cursor-pointer hover:bg-gray-700 transition flex items-center gap-3";
+        li.innerHTML = `<span class="text-xl md:text-2xl">${itemData.emoji}</span> <div><div class="text-sm md:text-base font-bold text-white">${itemData.name}</div><div class="text-[10px] md:text-xs text-gray-400">${itemData.type === 'equipment' ? '장비' : '소모품'}</div></div>`;
+        
+        li.onclick = () => {
+            document.querySelectorAll('.recipe-item').forEach(el => el.classList.remove('selected'));
+            li.classList.add('selected');
+            selectRecipe(idx);
+        };
+        listEl.appendChild(li);
+    });
+    
+    document.getElementById('craftEmpty').classList.remove('hidden');
+    document.getElementById('craftDetails').classList.add('hidden');
+    document.getElementById('btnDoCraft').classList.add('hidden');
+    selectedRecipeId = null;
+}
+
+function selectRecipe(idx) {
+    selectedRecipeId = idx;
+    const recipe = RECIPES[idx];
+    const targetItem = ITEM_DB[recipe.targetId];
+    
+    document.getElementById('craftEmpty').classList.add('hidden');
+    document.getElementById('craftDetails').classList.remove('hidden');
+    document.getElementById('btnDoCraft').classList.remove('hidden');
+    
+    document.getElementById('cIcon').innerText = targetItem.emoji;
+    document.getElementById('cName').innerText = targetItem.name;
+    document.getElementById('cType').innerText = targetItem.type === 'equipment' ? '장비' : '소모품';
+    document.getElementById('cDesc').innerText = targetItem.desc || '설명 없음';
+    
+    const ingEl = document.getElementById('cIngredients');
+    ingEl.innerHTML = '';
+    
+    let canCraft = true;
+    recipe.ingredients.forEach(ing => {
+        const mat = ITEM_DB[ing.id];
+        const owned = getTotalItemCount(ing.id);
+        const isEnough = owned >= ing.qty;
+        if(!isEnough) canCraft = false;
+        
+        let li = document.createElement('li');
+        li.className = `flex justify-between items-center bg-gray-800 p-2 rounded border ${isEnough ? 'border-green-800' : 'border-red-800'}`;
+        li.innerHTML = `<div class="flex items-center gap-2"><span class="text-lg">${mat.emoji}</span> <span class="text-xs md:text-sm">${mat.name}</span></div> 
+                        <span class="text-xs md:text-sm font-bold ${isEnough ? 'text-green-400' : 'text-red-400'}">${owned} / ${ing.qty}</span>`;
+        ingEl.appendChild(li);
+    });
+    
+    const btn = document.getElementById('btnDoCraft');
+    btn.disabled = !canCraft;
+}
+
+document.getElementById('btnDoCraft').addEventListener('click', () => {
+    if(selectedRecipeId === null) return;
+    const recipe = RECIPES[selectedRecipeId];
+    let canCraft = true;
+    recipe.ingredients.forEach(ing => { if(getTotalItemCount(ing.id) < ing.qty) canCraft = false; });
+    
+    if(canCraft) {
+        if(runData.inventory.findIndex(i=>i===null) === -1 && metaData.stash.findIndex(i=>i===null) === -1) {
+            showToast("가방과 창고에 빈 공간이 없어 제작할 수 없습니다."); return;
+        }
+        recipe.ingredients.forEach(ing => consumeItems(ing.id, ing.qty));
+        giveCraftedItem(ITEM_DB[recipe.targetId]);
+        AudioManager.play('success'); // 제작 성공 시 성공음 
+        showToast(`${ITEM_DB[recipe.targetId].name} 제작 완료!`);
+        selectRecipe(selectedRecipeId);
+    }
+});
+
+
+function startRun() {
+    currentState = GAME_STATE.PLAYING;
+    document.getElementById('screenTown').classList.add('hidden'); document.getElementById('screenHUD').classList.remove('hidden'); document.getElementById('channelingUI').classList.add('hidden');
+    closeInventory(); document.getElementById('craftingWindow').classList.add('hidden');
+    
+    AudioManager.startBGM(); // 던전 BGM 시작
+    
+    if (!metaData.receivedFreeWeapon) {
+        let weapons = [ITEM_DB['sword'], ITEM_DB['spear'], ITEM_DB['bow']]; runData.equipment.weapon = weapons[randInt(0, weapons.length)]; metaData.receivedFreeWeapon = true;
+        setTimeout(() => showToast("테스트용 랜덤 무기가 1회 자동 장착되었습니다!"), 500);
+    }
+    
+    runData.extracted = false; updateAllUI(); generateMap(); player = new Player(rooms[0].cx * TILE_SIZE, rooms[0].cy * TILE_SIZE);
+    lastTime = performance.now(); requestAnimationFrame(gameLoop);
+}
+
+function endRun(success) {
+    currentState = GAME_STATE.RESULT;
+    document.getElementById('screenHUD').classList.add('hidden'); document.getElementById('screenResult').classList.remove('hidden'); document.getElementById('interactPrompt').classList.add('hidden');
+    if (player) player.cancelChannel(); closeInventory();
+
+    AudioManager.stopBGM(); // 던전 BGM 정지
+    if (success) AudioManager.play('success');
+    else AudioManager.play('fail');
+
+    const title = document.getElementById('resultTitle'), sub = document.getElementById('resultSub'), list = document.getElementById('resultList');
+    list.innerHTML = '';
+    let allItems = [...runData.inventory, ...runData.quickSlots, runData.equipment.head, runData.equipment.chest, runData.equipment.legs, runData.equipment.boots, runData.equipment.weapon].filter(i => i !== null);
+
+    if (success) {
+        title.innerText = "탈출 성공!"; title.className = "text-4xl md:text-6xl font-black mb-4 text-center text-green-500";
+        sub.innerText = "수집한 아이템을 무사히 마을로 가져왔습니다.";
+        if (allItems.length === 0) list.innerHTML = '<li class="text-gray-500 text-center py-4">가방에 아이템이 없습니다.</li>';
+        else {
+            allItems.forEach(item => {
+                let li = document.createElement('li'); li.className = "flex justify-between items-center bg-gray-900 p-2 rounded";
+                li.innerHTML = `<span><span class="text-lg">${item.emoji}</span> ${item.name}</span> <span class="text-gray-400 text-xs">${item.type === 'equipment' ? '장비' : item.type}</span>`; list.appendChild(li);
+            });
+        }
+        metaData.lastDeathCorpse = null; document.getElementById('townLastRun').innerText = `성공 귀환 (무사 생존)`;
+    } else {
+        runData.inventory.fill(null); runData.quickSlots.fill(null); runData.equipment = { weapon: null, head: null, chest: null, legs: null, boots: null };
+        title.innerText = "KIA (사망)"; title.className = "text-4xl md:text-6xl font-black mb-4 text-center text-red-600";
+        sub.innerText = "모든 물품을 잃고 구조되었습니다."; list.innerHTML = '<li class="text-red-400 text-center py-4 font-bold">인벤토리/장착 중인 모든 항목 손실</li>';
+        allItems.forEach(item => { let li = document.createElement('li'); li.className = "flex justify-between items-center bg-red-900 bg-opacity-30 p-2 rounded text-gray-500 line-through"; li.innerHTML = `<span><span class="text-lg">${item.emoji}</span> ${item.name}</span>`; list.appendChild(li); });
+        if (allItems.length > 0) {
+            metaData.lastDeathCorpse = { items: allItems };
+            let info = document.createElement('p'); info.className = "text-yellow-500 text-xs md:text-sm mt-4 text-center font-bold"; info.innerText = "※ 다음 출정 시 스폰 지점 근처에서 유실물을 회수할 수 있습니다."; list.appendChild(info);
+        }
+        document.getElementById('townLastRun').innerText = "임무 실패 (전부 손실)";
+    }
+}
+
+document.getElementById('btnUpWH').addEventListener('click', () => {
+    let costV = metaData.upgrades.warehouse * 100, costM = metaData.upgrades.warehouse * 50;
+    if (metaData.valuables >= costV && metaData.materials >= costM) { metaData.valuables -= costV; metaData.materials -= costM; metaData.upgrades.warehouse++; initTown(); } else showToast("자원이 부족합니다!");
+});
+document.getElementById('btnUpWB').addEventListener('click', () => {
+    let costV = metaData.upgrades.workbench * 150, costM = metaData.upgrades.workbench * 100;
+    if (metaData.valuables >= costV && metaData.materials >= costM) { metaData.valuables -= costV; metaData.materials -= costM; metaData.upgrades.workbench++; initTown(); } else showToast("자원이 부족합니다!");
+});
+document.getElementById('btnEmbark').addEventListener('click', startRun);
+document.getElementById('btnReturn').addEventListener('click', initTown);
+
+function update(dt) {
+    if (currentState !== GAME_STATE.PLAYING) return;
+    mouse.worldX = mouse.x + camera.x; mouse.worldY = mouse.y + camera.y;
+    player.update(dt);
+    enemies.forEach((e, index) => { e.update(dt); if (e.hp <= 0) enemies.splice(index, 1); });
+    projectiles.forEach((p, index) => { p.update(dt); if (p.life <= 0) projectiles.splice(index, 1); });
+    items.forEach(i => i.update(dt)); particles.forEach((p, index) => { p.update(dt); if (p.life <= 0) particles.splice(index, 1); });
+    
+    handleInteractions();
+    
+    if (currentLootContainer && !document.getElementById('inventoryWindow').classList.contains('hidden')) {
+        if (distance(player.x, player.y, currentLootContainer.x, currentLootContainer.y) > 80) closeInventory();
+        else {
+            let targetSlotIdx = currentLootContainer.data.items.findIndex(slot => slot !== null && !slot.revealed);
+            if (targetSlotIdx !== -1) {
+                let targetSlot = currentLootContainer.data.items[targetSlotIdx];
+                let prevProgress = targetSlot.progress;
+                targetSlot.progress += dt;
+                
+                // 루팅 중 바스락 거리는 사운드 효과
+                if (Math.floor(prevProgress * 8) !== Math.floor(targetSlot.progress * 8)) {
+                    AudioManager.play('loot');
+                }
+
+                if (targetSlot.progress >= 1.5) { targetSlot.revealed = true; targetSlot.progress = 1.5; updateLootUI(); }
+                else { let pBar = document.getElementById(`loot-slot-${targetSlotIdx}`)?.querySelector('.search-bar'); if (pBar) pBar.style.width = `${(targetSlot.progress / 1.5) * 100}%`; }
+            }
+        }
+    }
+
+    updateHUD();
+    camera.x += (player.x - width / 2 - camera.x) * 5 * dt; camera.y += (player.y - height / 2 - camera.y) * 5 * dt;
+}
+
+function draw() {
+    ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, width, height);
+    if (currentState !== GAME_STATE.PLAYING) return;
+
+    ctx.save(); ctx.translate(-camera.x, -camera.y);
+    let startCol = Math.max(0, Math.floor(camera.x / TILE_SIZE)), endCol = Math.min(MAP_COLS, Math.floor((camera.x + width) / TILE_SIZE) + 1);
+    let startRow = Math.max(0, Math.floor(camera.y / TILE_SIZE)), endRow = Math.min(MAP_ROWS, Math.floor((camera.y + height) / TILE_SIZE) + 1);
+
+    for (let r = startRow; r < endRow; r++) {
+        for (let c = startCol; c < endCol; c++) {
+            if (mapGrid[r][c] === 1) { ctx.fillStyle = '#1f2937'; ctx.fillRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE + 1, TILE_SIZE + 1); ctx.strokeStyle = '#111827'; ctx.strokeRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE); } 
+            else { ctx.fillStyle = '#374151'; ctx.fillRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE + 1, TILE_SIZE + 1); if ((r+c)%2===0) { ctx.fillStyle = 'rgba(0,0,0,0.1)'; ctx.fillRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE); } }
+        }
+    }
+
+    interactables.forEach(i => i.draw(ctx)); items.forEach(i => i.draw(ctx)); enemies.forEach(e => e.draw(ctx));
+    player.draw(ctx); projectiles.forEach(p => p.draw(ctx)); particles.forEach(p => p.draw(ctx));
+    
+    let exitObj = interactables.find(i => i.type === 'EXIT');
+    if (exitObj) {
+        let dx = exitObj.x - player.x, dy = exitObj.y - player.y, dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist > 300) {
+            let angle = Math.atan2(dy, dx);
+            ctx.save(); ctx.translate(player.x + Math.cos(angle) * 120, player.y + Math.sin(angle) * 120); ctx.rotate(angle);
+            ctx.fillStyle = 'rgba(34, 197, 94, 0.8)'; ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(-10, -10); ctx.lineTo(-5, 0); ctx.lineTo(-10, 10); ctx.fill(); ctx.restore();
+        }
+    }
+    ctx.restore();
+
+    ctx.globalCompositeOperation = 'destination-in';
+    let visionGradient = ctx.createRadialGradient(width/2, height/2, 50, width/2, height/2, 350);
+    visionGradient.addColorStop(0, 'rgba(0, 0, 0, 1)'); visionGradient.addColorStop(0.7, 'rgba(0, 0, 0, 0.5)'); visionGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = visionGradient; ctx.fillRect(0, 0, width, height); ctx.globalCompositeOperation = 'source-over';
+}
+
+function gameLoop(timestamp) {
+    if (currentState === GAME_STATE.PLAYING) requestAnimationFrame(gameLoop);
+    let dt = (timestamp - lastTime) / 1000; if (dt > 0.1) dt = 0.1; lastTime = timestamp;
+    update(dt); draw();
+}
+
+initTown();
+initMobileControls(); // 모바일 패드 스크립트 가동
+
+</script>
+</body>
+</html>
