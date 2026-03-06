@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>익스트랙션 액션 프로토타입 (OOP & Data-Driven)</title>
+    <link rel="icon" href="data:,">
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- midi-player 의존성: Magenta Music -->
-    <script src="https://cdn.jsdelivr.net/npm/@magenta/music@1.23.1/dist/magentamusic.min.js"></script>
+    <!-- MIDI 재생을 위한 통합 의존성: Tone.js + Magenta Core + html-midi-player -->
+    <script src="https://cdn.jsdelivr.net/combine/npm/tone@14.7.58,npm/@magenta/music@1.23.1/es6/core.js,npm/html-midi-player@1.5.0"></script>
 </head>
 <body>
 
@@ -46,8 +47,9 @@
         
         <!-- 중앙: 상호작용 프롬프트 -->
         <div id="interactPrompt" class="absolute top-2/3 left-1/2 transform -translate-x-1/2 -translate-y-1/2 hidden flex flex-col items-center text-center z-10 pointer-events-none">
-            <div class="bg-white text-black px-3 py-1 rounded font-bold mb-1 shadow-lg text-lg animate-bounce">[ E ] / 터치</div>
+            <div class="bg-white text-black px-3 py-1 rounded font-bold mb-1 shadow-lg text-lg animate-bounce">[ E ]</div>
             <span id="interactText" class="text-white font-bold text-shadow">상호작용</span>
+            <div id="interactCount" class="text-yellow-400 text-xs font-bold mt-1 bg-black bg-opacity-50 px-2 py-0.5 rounded hidden">휠 스크롤로 대상 변경 (1/3)</div>
         </div>
         
         <!-- 중앙: 채널링 바 -->
@@ -135,7 +137,7 @@
                 </div>
 
                 <div id="lootSection" class="w-full md:w-[240px] hidden flex-col border-t md:border-t-0 md:border-l border-gray-600 pt-4 md:pt-0 md:pl-4 flex-shrink-0">
-                    <h3 class="text-xs md:text-md font-bold text-yellow-500 mb-2">상자 탐색 중...</h3>
+                    <h3 class="text-xs md:text-md font-bold text-yellow-500 mb-2">상자 탐색</h3>
                     <div id="lootGrid" class="grid grid-cols-3 gap-2 bg-gray-900 p-3 rounded min-h-[100px]"></div>
                     <p class="text-xs text-gray-400 mt-2 text-center">아이템을 가방으로 옮기세요.</p>
                 </div>
@@ -257,8 +259,6 @@
 
 <midi-player id="bgmPlayer" sound-font loop></midi-player>
 
-<script type="module" src="https://cdn.jsdelivr.net/npm/html-midi-player@1.6.0/dist/midi-player.js"></script>
-
 <!-- 게임 시작 및 UI 스크립트 -->
 <!-- 시작 화면 (브라우저 오디오 정책 대응 및 게임 시작) -->
 <div id="startScreen" class="absolute inset-0 bg-black flex flex-col items-center justify-center z-[300]">
@@ -294,14 +294,6 @@
         startScreen.style.opacity = '0';
         setTimeout(() => { startScreen.style.display = 'none'; }, 500);
 
-        // 음악 재생 시도
-        if (player) {
-            player.src = 'bgm.mid';
-            // 로딩 시간을 고려하여 약간의 지연 후 재생 시도 혹은 즉시 시도
-            if (player.start) {
-                setTimeout(() => player.start(), 500);
-            }
-        }
     });
 
     // --- 일시정지 시스템 ---

@@ -1,26 +1,37 @@
-
 import { GAME_STATE } from "../data/gameData.js";
 import { ItemDrop } from "../entities/ItemDrop.js";
 import { rand } from "../utils.js";
+import { InventoryView } from "../ui/InventoryView.js";
+import { HUDView } from "../ui/HUDView.js";
+import { CraftingView } from "../ui/CraftingView.js";
+import { UpgradeView } from "../ui/UpgradeView.js";
 
 export class UIManager {
     constructor(container) {
         this.container = container;
+        this.initialized = false; // 초기화 시작
+
         this.session = container.get('PlayerSession');
         this.audio = container.get('AudioSystem');
         
-        this.wInv = document.getElementById('inventoryWindow');
-        this.wCraft = document.getElementById('craftingWindow');
-        this.wUpg = document.getElementById('upgradeWindow');
+        // View 초기화
+        this.inventoryView = new InventoryView(this);
+        this.hudView = new HUDView(this);
+        this.craftingView = new CraftingView(this);
+        this.upgradeView = new UpgradeView(this);
+        this.toast = { el: document.getElementById('toastMsg') };
         
         this.draggedItemInfo = null;
         this.selectedMobileSlot = null;
         this.currentLootContainer = null;
-        this.selectedRecipeId = null;
 
         this.bindEvents();
+        this.initialized = true; // 모든 View와 이벤트 바인딩 완료
     }
     
+    // InputManager 등 외부에서 인벤토리 창 엘리먼트에 접근하기 위한 Getter
+    get wInv() { return this.inventoryView?.window; }
+
     bindEvents() {
         window.addEventListener('dragover', e => e.preventDefault());
         window.addEventListener('drop', (e) => {
@@ -33,19 +44,25 @@ export class UIManager {
             if(e.target.closest('button') || e.target.closest('.recipe-item')) this.audio.play('ui');
         });
 
-        document.getElementById('btnCloseInv').addEventListener('click', (e) => { e.stopPropagation(); this.closeInventory(); });
-        document.getElementById('btnCloseCrafting').addEventListener('click', (e) => { e.stopPropagation(); this.closeCrafting(); });
-        document.getElementById('btnCloseUpgrade').addEventListener('click', (e) => { e.stopPropagation(); this.closeUpgrade(); });
+        // View의 window 요소를 사용하여 이벤트 바인딩
+        document.getElementById('btnCloseInv').onclick = () => this.closeInventory();
+        document.getElementById('btnCloseCrafting').onclick = () => this.closeCrafting();
+        document.getElementById('btnCloseUpgrade').onclick = () => this.closeUpgrade();
 
-        this.wInv.addEventListener('click', () => this.closeInventory());
-        this.wInv.querySelector('.window-content').addEventListener('click', e => e.stopPropagation());
-        this.wInv.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); }); 
+        if (this.inventoryView.window) {
+            this.inventoryView.window.onclick = () => this.closeInventory();
+            this.inventoryView.window.querySelector('.window-content').onclick = e => e.stopPropagation();
+        }
 
-        this.wCraft.addEventListener('click', () => this.closeCrafting());
-        this.wCraft.querySelector('.window-content').addEventListener('click', e => e.stopPropagation());
+        if (this.craftingView.window) {
+            this.craftingView.window.onclick = () => this.closeCrafting();
+            this.craftingView.window.querySelector('.window-content').onclick = e => e.stopPropagation();
+        }
 
-        this.wUpg.addEventListener('click', () => this.closeUpgrade());
-        this.wUpg.querySelector('.window-content').addEventListener('click', e => e.stopPropagation());
+        if (this.upgradeView.window) {
+            this.upgradeView.window.onclick = () => this.closeUpgrade();
+            this.upgradeView.window.querySelector('.window-content').onclick = e => e.stopPropagation();
+        }
 
         document.getElementById('btnMobileDrop').addEventListener('click', (e) => {
             e.preventDefault();
@@ -58,40 +75,56 @@ export class UIManager {
             }
         });
 
-        document.getElementById('btnDoCraft').addEventListener('click', () => this.doCraft());
-        document.getElementById('btnSellStash').addEventListener('click', () => this.sellStash());
-        document.getElementById('btnReturn').addEventListener('click', () => this.container.get('GameEngine').initTown());
-        document.getElementById('btnUpWH').addEventListener('click', () => this.upgradeFacility('warehouse', 100, 50));
-        document.getElementById('btnUpWB').addEventListener('click', () => this.upgradeFacility('workbench', 150, 100));
+        document.getElementById('btnDoCraft').onclick = () => this.doCraft();
+        document.getElementById('btnSellStash').onclick = () => this.sellStash();
+        document.getElementById('btnReturn').onclick = () => this.container.get('GameEngine').initTown();
+        document.getElementById('btnUpWH').onclick = () => this.upgradeFacility('warehouse');
+        document.getElementById('btnUpWB').onclick = () => this.upgradeFacility('workbench');
     }
 
     isAnyUIOpen() {
-        return !this.wInv.classList.contains('hidden') || !this.wCraft.classList.contains('hidden') || !this.wUpg.classList.contains('hidden');
+        return (this.inventoryView.window && !this.inventoryView.window.classList.contains('hidden')) || 
+               (this.craftingView.window && !this.craftingView.window.classList.contains('hidden')) || 
+               (this.upgradeView.window && !this.upgradeView.window.classList.contains('hidden'));
     }
 
-    openInventory(mode = 'inventory') {
-        document.getElementById('dropOutsideHint').innerHTML = "창 바깥으로 드래그하면 바닥에 버립니다.";
-        this.wInv.classList.remove('hidden');
-        document.getElementById('stashSection').classList.add('hidden');
-        document.getElementById('lootSection').classList.add('hidden');
-        document.getElementById('dropOutsideHint').classList.remove('hidden');
-        
-        if(mode === 'stash') {
-            document.getElementById('invWindowTitle').innerText = "창고 및 장비 관리";
-            document.getElementById('stashSection').classList.remove('hidden');
-            document.getElementById('dropOutsideHint').innerHTML = "창 바깥으로 드래그하면 <strong>영구히 파기</strong>됩니다.";
-        } else if (mode === 'loot') {
-            document.getElementById('invWindowTitle').innerText = "상자 탐색 중";
-            document.getElementById('lootSection').classList.remove('hidden');
-            document.getElementById('dropOutsideHint').classList.add('hidden');
-        } else {
-            document.getElementById('invWindowTitle').innerText = "내 소지품";
+    /**
+     * GameEngine 등에서 호출하는 제작 메뉴 오픈 메서드
+     */
+    openCraftingMenu() {
+        if (this.craftingView) {
+            this.craftingView.show();
+            const cm = this.container.get('CraftingManager');
+            if (cm) {
+                this.craftingView.renderRecipeList(cm.getRecipes(), (idx) => this.selectRecipe(idx));
+            } else {
+                console.error("CraftingManager not found in DI Container");
+                this.showToast("제작 시스템을 불러올 수 없습니다.");
+            }
         }
         this.updateAllUI();
     }
 
+    openUpgradeMenu() {
+        if (this.upgradeView) {
+            this.upgradeView.show();
+            this.updateUpgradeUI();
+        }
+        this.updateAllUI();
+    }
+
+    /**
+     * 인벤토리를 엽니다. 루팅 시에는 대상 컨테이너 하나만 받습니다.
+     */
+    openInventory(mode = 'inventory', container = null) {
+        this.inventoryView.setMode(mode);
+        this.inventoryView.show();
+        this.currentLootContainer = container;
+        this.updateAllUI();
+    }
+
     closeInventory() {
-        this.wInv.classList.add('hidden');
+        this.inventoryView.hide();
         this.currentLootContainer = null; this.draggedItemInfo = null; this.selectedMobileSlot = null; 
         this.clearItemInfo();
         document.getElementById('btnMobileDrop').classList.add('hidden');
@@ -99,26 +132,26 @@ export class UIManager {
     }
 
     closeCrafting() {
-        this.wCraft.classList.add('hidden');
+        this.craftingView.hide();
         this.container.get('InputManager').resetMouse();
     }
 
     closeUpgrade() {
-        this.wUpg.classList.add('hidden');
+        this.upgradeView.hide();
         this.container.get('InputManager').resetMouse();
     }
 
     showToast(msg) {
-        const toast = document.getElementById('toastMsg');
-        toast.innerText = msg; toast.style.opacity = 1;
-        setTimeout(() => toast.style.opacity = 0, 2000);
+        this.toast.el.innerText = msg; this.toast.el.style.opacity = 1;
+        setTimeout(() => this.toast.el.style.opacity = 0, 2000);
     }
 
     getArrRef(type) {
         if(type === 'inv') return this.session.run.inventory;
         if(type === 'quick') return this.session.run.quickSlots;
         if(type === 'stash') return this.session.meta.stash;
-        if(type === 'container' && this.currentLootContainer) return this.currentLootContainer.data.items;
+        if(type === 'equip') return this.session.run.equipment;
+        if(type === 'container' && this.currentLootContainer?.data?.items) return this.currentLootContainer.data.items;
         return null;
     }
 
@@ -126,429 +159,237 @@ export class UIManager {
         if(e) { e.preventDefault(); e.stopPropagation(); }
         if (!this.draggedItemInfo) return;
 
-        let sourceItemObj = this.draggedItemInfo.type === 'equip' ? this.session.run.equipment[this.draggedItemInfo.index] : (this.draggedItemInfo.type === 'container' ? this.getArrRef('container')[this.draggedItemInfo.index]?.data : this.getArrRef(this.draggedItemInfo.type)[this.draggedItemInfo.index]);
-        let targetItemObj = targetType === 'equip' ? this.session.run.equipment[targetIndex] : (targetType === 'container' ? this.getArrRef('container')[targetIndex]?.data : this.getArrRef(targetType)[targetIndex]);
+        const sourceRef = this.getArrRef(this.draggedItemInfo.type);
+        const targetRef = this.getArrRef(targetType);
+        
+        const result = this.session.swapItems(
+            { type: this.draggedItemInfo.type, idx: this.draggedItemInfo.index, arr: sourceRef },
+            { type: targetType, idx: targetIndex, arr: targetRef }
+        );
 
-        if (targetType === 'container' && this.getArrRef('container')[targetIndex] && !this.getArrRef('container')[targetIndex].revealed) { this.showToast("아직 탐색되지 않은 슬롯입니다."); return; }
-        if (targetType === 'equip' && sourceItemObj && (sourceItemObj.type !== 'equipment' || sourceItemObj.slot !== targetIndex)) { this.showToast("장착할 수 없는 아이템입니다."); return; }
-        if (this.draggedItemInfo.type === 'equip' && targetItemObj && (targetItemObj.type !== 'equipment' || targetItemObj.slot !== this.draggedItemInfo.index)) { this.showToast("장착할 수 없는 아이템입니다."); return; }
-
-        if (targetType === 'equip') this.session.run.equipment[targetIndex] = sourceItemObj;
-        else if (targetType === 'container') this.getArrRef('container')[targetIndex] = sourceItemObj ? { data: sourceItemObj, revealed: true, progress: 2.0 } : null;
-        else this.getArrRef(targetType)[targetIndex] = sourceItemObj;
-
-        if (this.draggedItemInfo.type === 'equip') this.session.run.equipment[this.draggedItemInfo.index] = targetItemObj;
-        else if (this.draggedItemInfo.type === 'container') this.getArrRef('container')[this.draggedItemInfo.index] = targetItemObj ? { data: targetItemObj, revealed: true, progress: 2.0 } : null;
-        else this.getArrRef(this.draggedItemInfo.type)[this.draggedItemInfo.index] = targetItemObj;
-
-        if (targetType === 'equip' || this.draggedItemInfo.type === 'equip') this.audio.play('equip');
-        else this.audio.play('inv_move');
-
-        this.draggedItemInfo = null; this.updateAllUI(); 
+        if (result.success) {
+            this.audio.play(targetType === 'equip' ? 'equip' : 'inv_move');
+            this.updateAllUI();
+        } else if (result.msg) {
+            this.showToast(result.msg);
+        }
+        this.draggedItemInfo = null;
     }
 
-    handleRightClickMove(type, index) {
-        const isLooting = !document.getElementById('lootSection').classList.contains('hidden');
-        if (!isLooting) return false; // Indicate we didn't handle it.
-    
-        let sourceArr, destArr, itemToMove, isDestContainer = false;
-    
-        if (type === 'container') {
-            // Move from loot container to inventory
-            sourceArr = this.getArrRef('container');
-            destArr = this.getArrRef('inv');
-            if (!sourceArr || !destArr) return true;
-    
-            const sourceSlot = sourceArr[index];
-            if (!sourceSlot || !sourceSlot.data) return true;
-            itemToMove = sourceSlot.data;
-        } else if (type === 'inv' || type === 'quick') {
-            // Move from inventory/quick to loot container
-            sourceArr = this.getArrRef(type);
-            destArr = this.getArrRef('container');
-            if (!sourceArr || !destArr) return true;
-    
-            itemToMove = sourceArr[index];
-            if (!itemToMove) return true;
-            isDestContainer = true;
+    handleDragStart(e, type, index) {
+        this.draggedItemInfo = { type, index };
+        if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = 'move';
+            // 드래그 이미지 커스텀이 필요하다면 여기서 설정 가능
+        }
+    }
+
+    handleRightClickAction(type, index) {
+        this.useItem(type, index);
+    }
+
+    handleMobileSlotClick(e, type, index) {
+        e.preventDefault();
+        const itemObj = type === 'container' ? this.getArrRef('container')[index]?.data : this.getArrRef(type)[index];
+        
+        if (this.selectedMobileSlot && this.selectedMobileSlot.type === type && this.selectedMobileSlot.index === index) {
+            // 동일 슬롯 두 번 클릭 시 사용/장착 (더블 탭 효과)
+            this.useItem(type, index);
+            this.selectedMobileSlot = null;
+            this.clearItemInfo();
+            document.getElementById('btnMobileDrop').classList.add('hidden');
         } else {
-            return false; // Not a loot/inv/quick slot
+            // 첫 클릭 시 선택 및 정보 표시
+            this.selectedMobileSlot = { type, index };
+            if (itemObj) {
+                this.showItemInfo(itemObj);
+                document.getElementById('btnMobileDrop').classList.remove('hidden');
+            } else {
+                this.clearItemInfo();
+                document.getElementById('btnMobileDrop').classList.add('hidden');
+            }
         }
-    
-        const emptyIndex = destArr.findIndex(i => i === null);
-        if (emptyIndex === -1) {
-            this.showToast(isDestContainer ? "상자가 가득 찼습니다." : "가방이 가득 찼습니다.");
-            return true;
-        }
-    
-        // Perform the move
-        if (isDestContainer) {
-            destArr[emptyIndex] = { data: itemToMove, revealed: true, progress: 2.0 };
-        } else {
-            destArr[emptyIndex] = itemToMove;
-        }
-    
-        sourceArr[index] = null;
-    
-        this.audio.play('inv_move');
         this.updateAllUI();
-        this.clearItemInfo();
-        return true; // Indicate we handled it.
+    }
+
+    useItem(type, index) {
+        const items = this.getArrRef(type);
+        if (!items) return;
+
+        const item = type === 'equip' ? items[index] : (type === 'container' ? items[index]?.data : items[index]);
+        if (!item) return;
+
+        let result = { success: false };
+
+        // 1. 루팅 중일 때의 특수 동작: 인벤토리 <-> 상자 간 이동
+        if (this.currentLootContainer) {
+            if (type === 'container') {
+                result = this.session.moveToFirstEmpty({ type, idx: index, arr: items }, 'inv', this.session.run.inventory);
+            } else if (type === 'inv' || type === 'quick') {
+                result = this.session.moveToFirstEmpty({ type, idx: index, arr: items }, 'container', this.getArrRef('container'));
+            }
+            if (result.success) this.audio.play('inv_move');
+        }
+        // 2. 창고 이용 중일 때
+        else if (!this.inventoryView.stashSection.classList.contains('hidden')) {
+            if (type === 'stash') {
+                result = this.session.moveToFirstEmpty({ type, idx: index, arr: items }, 'inv', this.session.run.inventory);
+            } else if (type === 'inv' || type === 'quick') {
+                result = this.session.moveToFirstEmpty({ type, idx: index, arr: items }, 'stash', this.session.meta.stash);
+            }
+            if (result.success) this.audio.play('inv_move');
+        }
+        // 3. 일반 상황: 장착/해제/사용
+        else if (type === 'equip') {
+            if (this.session.giveItem(item)) {
+                items[index] = null;
+                result = { success: true, msg: `${item.name} 해제` };
+                this.audio.play('inv_move');
+            } else result = { success: false, msg: "인벤토리에 공간이 없습니다." };
+        } else if (item.type === 'equipment') {
+            result = this.session.equipItem({ type, idx: index, arr: items }, item);
+            this.audio.play('equip');
+        } else if (item.type === 'consumable') {
+            const player = this.container.get('EntityManager').player;
+            result = this.session.useItem(type, index, player) || { success: false };
+            if (result.success) this.audio.play('ui');
+        } else result = { success: false, msg: "사용할 수 없는 아이템입니다." };
+        
+        if (result.msg) this.showToast(result.msg);
+        this.updateAllUI(); // 상태 변경 후 View 갱신
+    }
+
+    showItemInfo(itemObj) {
+        // 버그 수정: index.html의 ID와 일치하도록 수정
+        const infoBox = document.getElementById('itemInfoPanel');
+        if (!infoBox || !itemObj) return;
+        
+        const nameEl = document.getElementById('infoName');
+        const descEl = document.getElementById('infoDesc');
+        if (nameEl) nameEl.innerText = itemObj.name;
+        if (descEl) descEl.innerText = itemObj.desc || '';
+        
+        infoBox.classList.remove('hidden');
     }
 
     handleDropOutside(e) {
         if(e) e.preventDefault();
         if (!this.draggedItemInfo) return;
-        let itemObj = this.draggedItemInfo.type === 'equip' ? this.session.run.equipment[this.draggedItemInfo.index] : (this.draggedItemInfo.type === 'container' ? this.getArrRef('container')[this.draggedItemInfo.index]?.data : this.getArrRef(this.draggedItemInfo.type)[this.draggedItemInfo.index]);
-        
+
+        const items = this.getArrRef(this.draggedItemInfo.type);
+        const itemObj = this.session.dropItem(this.draggedItemInfo.type, this.draggedItemInfo.index, items);
+
         if (itemObj) {
-            if(this.draggedItemInfo.type === 'equip') this.session.run.equipment[this.draggedItemInfo.index] = null;
-            else if(this.draggedItemInfo.type === 'container') this.getArrRef('container')[this.draggedItemInfo.index] = null;
-            else this.getArrRef(this.draggedItemInfo.type)[this.draggedItemInfo.index] = null;
-            
             this.audio.play('drop');
             if (this.container.get('GameEngine').currentState === GAME_STATE.PLAYING) { 
                 let p = this.container.get('EntityManager').player;
                 this.container.get('EntityManager').items.push(new ItemDrop(p.x + rand(-20, 20), p.y + rand(-20, 20), itemObj)); 
                 this.showToast(`${itemObj.name} 버림`); 
-            } 
-            else { this.showToast(`[파기됨] ${itemObj.name}`); } 
+            } else { this.showToast(`[파기됨] ${itemObj.name}`); } 
         }
         this.draggedItemInfo = null; this.updateAllUI();
     }
 
-    handleDragStart(e, type, index) {
-        this.draggedItemInfo = { type, index };
-        e.dataTransfer.setData('text/plain', '');
-        e.dataTransfer.effectAllowed = 'move';
-        e.stopPropagation();
-    }
-
-    sendToStash(type, index) {
-        if (document.getElementById('stashSection').classList.contains('hidden')) return;
-
-        let sourceItem = null;
-        if (type === 'equip') {
-            sourceItem = this.session.run.equipment[index];
-        } else {
-            sourceItem = this.getArrRef(type)?.[index];
-        }
-        if (!sourceItem) return;
-
-        const emptyStashIndex = this.session.meta.stash.findIndex(i => i === null);
-        if (emptyStashIndex === -1) {
-            this.showToast("창고가 가득 찼습니다.");
-            return;
-        }
-
-        this.session.meta.stash[emptyStashIndex] = sourceItem;
-
-        if (type === 'equip') {
-            this.session.run.equipment[index] = null;
-        } else {
-            this.getArrRef(type)[index] = null;
-        }
-
-        this.audio.play('inv_move');
+    refreshInventory() {
         this.updateAllUI();
     }
 
-    tryPickupItem(itemObj) {
-        let emptyIdx = this.session.run.inventory.findIndex(i => i === null);
-        if (emptyIdx !== -1) { 
-            this.session.run.inventory[emptyIdx] = itemObj.data; 
-            this.updateAllUI(); 
-            this.container.get('EntityManager').createParticles(itemObj.x, itemObj.y, '#fff', 5); 
-            this.audio.play('pick');
-            return true; 
-        }
-        this.showToast("가방이 가득 찼습니다!"); return false;
+    /**
+     * MVVM 패턴의 ViewModel 역할을 수행하기 위한 알림 메서드입니다.
+     * 데이터(Model)가 변경되었을 때 호출하여 모든 View를 동기화합니다.
+     */
+    notify() {
+        this.updateAllUI();
     }
 
-    useItem(type, index) {
-        let p = this.container.get('EntityManager').player;
-        if (type === 'equip') {
-            let itemObj = this.session.run.equipment[index]; if (!itemObj) return;
-            let emptyIdx = this.session.run.inventory.findIndex(i => i === null);
-            if (emptyIdx !== -1) { 
-                this.session.run.inventory[emptyIdx] = itemObj; this.session.run.equipment[index] = null; 
-                this.audio.play('equip'); this.updateAllUI();
-            } 
-            else this.showToast("가방에 빈 공간이 없습니다.");
-            return;
-        }
-        let arr = this.getArrRef(type); if(!arr) return;
-        let itemObj = type === 'container' ? arr[index]?.data : arr[index];
-
-        if (itemObj && itemObj.type === 'equipment') {
-            let currentEquip = this.session.run.equipment[itemObj.slot];
-            this.session.run.equipment[itemObj.slot] = itemObj;
-            if(type === 'container') arr[index] = currentEquip ? { data: currentEquip, revealed: true, progress: 2.0 } : null;
-            else arr[index] = currentEquip;
-            this.audio.play('equip'); this.updateAllUI(); return;
-        }
-        if (itemObj && itemObj.type === 'consumable' && p && p.hp < p.baseMaxHp) {
-            p.heal(itemObj.heal); arr[index] = null; this.updateAllUI();
-            this.audio.play('ui'); 
-        } else if (itemObj && itemObj.type !== 'consumable') { this.showToast("소비할 수 없습니다."); }
-    }
-
-    handleMobileSlotClick(e, type, index) {
-        if(e) e.preventDefault();
-        let arr = this.getArrRef(type);
-        let itemObj = null;
-
-        if (type === 'equip') itemObj = this.session.run.equipment[index];
-        else if (type === 'container') itemObj = arr[index]?.revealed ? arr[index].data : null;
-        else itemObj = arr[index];
-
-        if (type === 'container' && arr[index] && !arr[index].revealed) return;
-
-        if (!this.selectedMobileSlot) {
-            if (itemObj) {
-                this.selectedMobileSlot = { type, index };
-                this.updateAllUI();
-                this.showItemInfo(itemObj);
-                document.getElementById('btnMobileDrop').classList.remove('hidden');
-            }
-        } else {
-            if (this.selectedMobileSlot.type === type && this.selectedMobileSlot.index === index) {
-                // Stash check for double-tap
-                if (!document.getElementById('stashSection').classList.contains('hidden')) {
-                    this.sendToStash(type, index);
-                } else {
-                    this.useItem(type, index);
-                }
-                this.selectedMobileSlot = null;
-                this.clearItemInfo();
-                document.getElementById('btnMobileDrop').classList.add('hidden');
-            } else {
-                this.draggedItemInfo = { type: this.selectedMobileSlot.type, index: this.selectedMobileSlot.index };
-                this.handleDrop(null, type, index);
-                this.selectedMobileSlot = null;
-                document.getElementById('btnMobileDrop').classList.add('hidden');
-                this.clearItemInfo();
-            }
-            this.updateAllUI();
-        }
-    }
-
-    showItemInfo(itemObj) {
-        if (!itemObj) { this.clearItemInfo(); return; }
-        document.getElementById('infoName').innerText = `${itemObj.emoji} ${itemObj.name}`;
-        document.getElementById('infoDesc').innerText = itemObj.desc || "정보 없음";
-    }
-    clearItemInfo() { 
-        document.getElementById('infoName').innerText = '아이템을 선택하세요'; 
-        document.getElementById('infoDesc').innerText = this.container.get('InputManager').isTouchDevice ? '한 번 터치: 선택 / 두 번 터치: 창고로 이동/사용' : '우클릭으로 창고 이동/사용, 드래그 앤 드롭으로 이동'; 
-    }
-
-    createSlotHTML(type, index, slotData, label, isHUD = false) {
-        let slot = document.createElement('div');
-        if (type === 'container') slot.id = `loot-slot-${index}`;
-        let baseClass = type === 'quick' ? 'w-10 h-10 md:w-12 md:h-12 text-xl md:text-2xl' : type === 'stash' ? 'w-8 h-8 md:w-10 md:h-10 text-lg md:text-xl' : 'w-12 h-12 md:w-14 md:h-14 text-2xl md:text-3xl';
-        let itemObj = type === 'container' ? (slotData?.revealed ? slotData.data : null) : slotData;
-
-        if (type === 'container' && slotData && !slotData.revealed) {
-            slot.className = `inv-slot bg-gray-800 shadow-inner flex items-center justify-center relative overflow-hidden ${baseClass}`;
-            slot.innerHTML = `<span class="text-gray-500 font-bold text-lg animate-pulse">?</span>`;
-            let pBar = document.createElement('div'); pBar.className = "search-bar absolute bottom-0 left-0 h-1 bg-yellow-500 transition-none"; pBar.style.width = `${(slotData.progress / 1.5) * 100}%`; slot.appendChild(pBar);
-            return slot;
-        }
-
-        let isTouch = this.container.get('InputManager').isTouchDevice;
-
-        if (itemObj) {
-            slot.className = `inv-slot bg-gray-700 shadow-inner cursor-pointer hover:bg-gray-500 transition flex items-center justify-center relative ${baseClass}`;
-            slot.draggable = true; slot.innerHTML = `<span>${itemObj.emoji}</span>`;
-            
-            if (isHUD) {
-                slot.addEventListener('touchstart', e => { e.preventDefault(); this.useItem(type, index); }, {passive: false});
-                slot.addEventListener('mousedown', e => { e.preventDefault(); this.useItem(type, index); });
-            } else {
-                slot.addEventListener('dblclick', e => {
-                    e.preventDefault();
-                    if (!document.getElementById('stashSection').classList.contains('hidden')) {
-                        this.sendToStash(type, index);
-                    }
-                });
-
-                if (isTouch) {
-                    slot.addEventListener('touchstart', (e) => this.handleMobileSlotClick(e, type, index), {passive: false});
-                } else {
-                    slot.oncontextmenu = (e) => { 
-                        e.preventDefault();
-                        if (this.handleRightClickMove(type, index)) {
-                            return;
-                        }
-                        if (!document.getElementById('stashSection').classList.contains('hidden') && type !== 'stash' && type !== 'equip') {
-                            this.sendToStash(type, index);
-                        } else {
-                            this.useItem(type, index);
-                        }
-                    };
-                    slot.addEventListener('dragstart', (e) => this.handleDragStart(e, type, index));
-                    slot.onmouseenter = () => this.showItemInfo(itemObj); 
-                    slot.onmouseleave = () => { if(!this.selectedMobileSlot) this.clearItemInfo(); };
-                }
-            }
-        } else {
-            slot.className = `inv-slot empty flex items-center justify-center relative ${baseClass}`;
-            if (!isHUD) {
-                if (isTouch) {
-                    slot.addEventListener('touchstart', (e) => this.handleMobileSlotClick(e, type, index), {passive: false});
-                }
-                else slot.onmouseenter = () => { if(!this.selectedMobileSlot) this.clearItemInfo(); };
-            }
-        }
-        
-        if (this.selectedMobileSlot && this.selectedMobileSlot.type === type && this.selectedMobileSlot.index === index) {
-            slot.classList.add('border-blue-500', 'border-4'); slot.classList.remove('border-2', 'border-[#555]');
-        }
-
-        if (label) {
-            let lbl = document.createElement('span'); lbl.className = 'absolute top-0 left-1 text-[9px] md:text-[11px] text-yellow-400 font-bold drop-shadow pointer-events-none';
-            lbl.innerText = label; slot.appendChild(lbl);
-        }
-        
-        if (!isHUD && !isTouch) {
-            slot.addEventListener('dragover', e=>e.preventDefault()); slot.addEventListener('drop', (e) => this.handleDrop(e, type, index));
-        }
-        return slot;
+    // 하위 호환성 및 GameEngine의 특정 호출을 위한 별칭
+    updateLootUI() {
+        this.notify();
     }
 
     updateAllUI() {
-        const quickHUD = document.getElementById('quickSlotHUDContainer');
-        if (quickHUD) { quickHUD.innerHTML = ''; for(let i=0; i<8; i++) quickHUD.appendChild(this.createSlotHTML('quick', i, this.session.run.quickSlots[i], i+1, true)); }
-        
-        const equipGrid = document.getElementById('equipGrid');
-        if (equipGrid) {
-            equipGrid.innerHTML = ''; const sNames = { head: '머리', chest: '가슴', legs: '하의', boots: '신발', weapon: '무기' };
-            ['head', 'chest', 'legs', 'boots', 'weapon'].forEach(k => equipGrid.appendChild(this.createSlotHTML('equip', k, this.session.run.equipment[k], sNames[k])));
-        }
+        this.hudView.renderQuickSlots(this.session.run.quickSlots);
+        this.inventoryView.renderInventory(this.session.run.inventory, this.session.run.quickSlots, this.session.run.maxSlots);
+        this.inventoryView.renderEquip(this.session.run.equipment);
+        this.inventoryView.renderStash(this.session.meta.stash);
+        this.inventoryView.renderLoot(this.currentLootContainer?.data?.items);
 
-        const invGrid = document.getElementById('invGrid'), quickGrid = document.getElementById('quickSlotGrid');
-        if (invGrid && quickGrid) {
-            invGrid.innerHTML = ''; for(let i=0; i<this.session.run.maxSlots; i++) invGrid.appendChild(this.createSlotHTML('inv', i, this.session.run.inventory[i], null));
-            quickGrid.innerHTML = ''; for(let i=0; i<8; i++) quickGrid.appendChild(this.createSlotHTML('quick', i, this.session.run.quickSlots[i], i+1));
-        }
-
-        const stashGrid = document.getElementById('stashGrid');
-        if (stashGrid && !document.getElementById('stashSection').classList.contains('hidden')) {
-            stashGrid.innerHTML = ''; for(let i=0; i<this.session.meta.stash.length; i++) stashGrid.appendChild(this.createSlotHTML('stash', i, this.session.meta.stash[i], null));
-        }
-        
         document.getElementById('hudValuables').innerText = this.session.meta.valuables;
         document.getElementById('hudMaterials').innerText = this.session.meta.materials;
-        document.getElementById('upgValuables').innerText = this.session.meta.valuables;
-        document.getElementById('upgMaterials').innerText = this.session.meta.materials;
-        
-        this.updateLootUI();
-    }
 
-    updateLootUI() {
-        const lootGrid = document.getElementById('lootGrid');
-        if (lootGrid && this.currentLootContainer) { lootGrid.innerHTML = ''; for(let i=0; i<6; i++) lootGrid.appendChild(this.createSlotHTML('container', i, this.currentLootContainer.data.items[i], null)); }
+        // 제작창이 열려있다면 상세 정보(재료 현황 등) 갱신
+        const cm = this.container.get('CraftingManager');
+        if (cm && this.craftingView.window && !this.craftingView.window.classList.contains('hidden')) {
+            if (cm.selectedRecipeId !== null) this.selectRecipe(cm.selectedRecipeId);
+        }
     }
 
     updateHUD(player) {
         if(!player) return;
-        document.getElementById('hpBar').style.width = `${(player.hp / player.baseMaxHp) * 100}%`; 
-        document.getElementById('hpText').innerText = `${Math.floor(player.hp)}/${player.baseMaxHp}`;
-        document.getElementById('spBar').style.width = `${(player.sp / player.baseMaxSp) * 100}%`; 
-        document.getElementById('defText').innerText = `DEF ${this.session.getDefense()}`;
-        
-        const ui = document.getElementById('channelingUI');
-        if (player.channeling > 0) { ui.classList.remove('hidden'); document.getElementById('channelBar').style.width = `${((3.0 - player.channeling) / 3.0) * 100}%`; } 
-        else ui.classList.add('hidden');
+        this.hudView.updateStatus(player.hp, player.baseMaxHp, player.sp, player.baseMaxSp, this.session.getDefense());
+        this.hudView.updateChanneling(player.channeling);
     }
 
-    sellStash() {
-        let soldVal = 0, soldMat = 0;
-        for(let i=0; i<this.session.meta.stash.length; i++){
-            let item = this.session.meta.stash[i];
-            if(item && (item.id === 'scrap' || item.id === 'core')) { soldMat += item.value; this.session.meta.stash[i] = null; }
-            else if(item && item.type === 'valuable') { soldVal += item.value; this.session.meta.stash[i] = null; }
-        }
-        if(soldVal > 0 || soldMat > 0) {
-            this.session.meta.valuables += soldVal; this.session.meta.materials += soldMat;
-            this.showToast(`판매 완료! 귀중품 +${soldVal}, 재료 +${soldMat}`); this.updateAllUI(); 
-        } else this.showToast("창고에 환전할 재화가 없습니다.");
+    updateUpgradeUI() {
+        const stats = this.session.meta.upgrades;
+        const costs = {
+            warehouse: { val: 100 * stats.warehouse, mat: 50 * stats.warehouse },
+            workbench: { val: 150 * stats.workbench, mat: 100 * stats.workbench }
+        };
+        this.upgradeView.render(stats, costs, this.session.meta.valuables, this.session.meta.materials);
     }
 
-    upgradeFacility(type, costV, costM) {
-        if (this.session.meta.valuables >= costV && this.session.meta.materials >= costM) { 
-            this.session.meta.valuables -= costV; this.session.meta.materials -= costM; 
-            this.session.meta.upgrades[type]++; 
-            this.audio.play('equip'); this.showToast("시설이 강화되었습니다!"); 
-            
-            document.getElementById('whLevel').innerText = this.session.meta.upgrades.warehouse; 
-            document.getElementById('whCostVal').innerText = this.session.meta.upgrades.warehouse * 100; 
-            document.getElementById('whCostMat').innerText = this.session.meta.upgrades.warehouse * 50;
-            
-            document.getElementById('wbLevel').innerText = this.session.meta.upgrades.workbench; 
-            document.getElementById('wbCostVal').innerText = this.session.meta.upgrades.workbench * 150; 
-            document.getElementById('wbCostMat').innerText = this.session.meta.upgrades.workbench * 100;
-            
-            if(type === 'warehouse') this.session.resizeInventory();
-            else {
-                let p = this.container.get('EntityManager').player;
-                if(p) { p.baseMaxHp = this.session.getMaxHp(); p.baseMaxSp = this.session.getMaxSp(); p.heal(0); }
-            }
+    upgradeFacility(type) {
+        const result = this.session.upgradeFacility(type);
+        if (result.success) {
+            this.audio.play('success');
             this.updateAllUI();
-        } else this.showToast("자원이 부족합니다!");
+            this.updateUpgradeUI();
+        }
+        if (result.msg) this.showToast(result.msg);
     }
 
-    openCraftingMenu() {
-        this.wCraft.classList.remove('hidden');
-        const listEl = document.getElementById('recipeList'); listEl.innerHTML = '';
-        
-        this.container.get('DataManager').getRecipes().forEach((recipe, idx) => {
-            const itemData = this.container.get('DataManager').getItem(recipe.targetId);
-            let li = document.createElement('li');
-            li.className = "recipe-item p-2 md:p-3 bg-gray-800 rounded border border-gray-700 cursor-pointer hover:bg-gray-700 transition flex items-center gap-3";
-            li.innerHTML = `<span class="text-xl md:text-2xl">${itemData.emoji}</span> <div><div class="text-sm md:text-base font-bold text-white">${itemData.name}</div><div class="text-[10px] md:text-xs text-gray-400">${itemData.type === 'equipment' ? '장비' : '소모품'}</div></div>`;
-            li.onclick = () => { document.querySelectorAll('.recipe-item').forEach(el => el.classList.remove('selected')); li.classList.add('selected'); this.selectRecipe(idx); };
-            listEl.appendChild(li);
-        });
-        document.getElementById('craftEmpty').classList.remove('hidden'); document.getElementById('craftDetails').classList.add('hidden'); document.getElementById('btnDoCraft').classList.add('hidden');
-        this.selectedRecipeId = null;
-    }
-
-    selectRecipe(idx) {
-        this.selectedRecipeId = idx;
-        const recipe = this.container.get('DataManager').getRecipes()[idx];
-        const targetItem = this.container.get('DataManager').getItem(recipe.targetId);
-        
-        document.getElementById('craftEmpty').classList.add('hidden'); document.getElementById('craftDetails').classList.remove('hidden'); document.getElementById('btnDoCraft').classList.remove('hidden');
-        document.getElementById('cIcon').innerText = targetItem.emoji; document.getElementById('cName').innerText = targetItem.name;
-        document.getElementById('cType').innerText = targetItem.type === 'equipment' ? '장비' : '소모품'; document.getElementById('cDesc').innerText = targetItem.desc || '설명 없음';
-        
-        const ingEl = document.getElementById('cIngredients'); ingEl.innerHTML = '';
-        let canCraft = true;
-        recipe.ingredients.forEach(ing => {
-            const mat = this.container.get('DataManager').getItem(ing.id);
-            const owned = this.session.getTotalItemCount(ing.id);
-            const isEnough = owned >= ing.qty; if(!isEnough) canCraft = false;
-            let li = document.createElement('li');
-            li.className = `flex justify-between items-center bg-gray-800 p-2 rounded border ${isEnough ? 'border-green-800' : 'border-red-800'}`;
-            li.innerHTML = `<div class="flex items-center gap-2"><span class="text-lg">${mat.emoji}</span> <span class="text-xs md:text-sm">${mat.name}</span></div> <span class="text-xs md:text-sm font-bold ${isEnough ? 'text-green-400' : 'text-red-400'}">${owned} / ${ing.qty}</span>`;
-            ingEl.appendChild(li);
-        });
-        document.getElementById('btnDoCraft').disabled = !canCraft;
+    clearItemInfo() {
+        const infoBox = document.getElementById('itemInfo');
+        if (infoBox) {
+            infoBox.classList.add('hidden');
+        }
+        // 모바일 선택 상태도 함께 해제
+        this.selectedMobileSlot = null;
     }
 
     doCraft() {
-        if(this.selectedRecipeId === null) return;
-        const recipe = this.container.get('DataManager').getRecipes()[this.selectedRecipeId];
-        let canCraft = true;
-        recipe.ingredients.forEach(ing => { if(this.session.getTotalItemCount(ing.id) < ing.qty) canCraft = false; });
-        if(canCraft) {
-            if(this.session.run.inventory.findIndex(i=>i===null) === -1 && this.session.meta.stash.findIndex(i=>i===null) === -1) { this.showToast("빈 공간이 없습니다."); return; }
-            recipe.ingredients.forEach(ing => this.session.consumeItems(ing.id, ing.qty));
-            this.session.giveItem(this.container.get('DataManager').getItem(recipe.targetId));
-            this.audio.play('success'); this.showToast("제작 완료!");
-            this.selectRecipe(this.selectedRecipeId);
+        const cm = this.container.get('CraftingManager');
+        if (!cm) return;
+
+        const result = cm.doCraft();
+        if (result) {
+            this.showToast(result.msg);
+            if (result.success) {
+                this.updateAllUI();
+                this.selectRecipe(cm.selectedRecipeId);
+            }
+        }
+    }
+
+    /**
+     * 창고에 있는 가치 있는 아이템들을 자동으로 판매합니다.
+     */
+    sellStash() {
+        const result = this.session.sellStashItems();
+        if (result.success) {
+            this.audio.play('success');
+            this.updateAllUI();
+        }
+        if (result.msg) this.showToast(result.msg);
+    }
+
+    selectRecipe(idx) {
+        const cm = this.container.get('CraftingManager');
+        if (!cm) return;
+        const data = cm.selectRecipe(idx);
+        if (data && this.craftingView) {
+            this.craftingView.renderDetails(data.targetItem, data.ingredients, data.canCraft);
         }
     }
 }
