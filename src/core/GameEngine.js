@@ -10,14 +10,42 @@ export class GameEngine {
     constructor(container) {
         this.c = container;
         this.canvas = document.getElementById('gameCanvas');
-        this.ctx = this.canvas.getContext('2d');
         this.lastTime = 0;
         this.currentState = GAME_STATE.TOWN;
-        this.camera = { x: 0, y: 0 };
         this.width = 0;
         this.height = 0;
         this.interactTargets = [];
         this.interactTargetIdx = 0;
+
+        // Three.js Core Components
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000);
+        this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
+        this.renderer.shadowMap.enabled = true;
+        
+        // Raycaster for Mouse interaction
+        this.raycaster = new THREE.Raycaster();
+        this.mouseVec = new THREE.Vector2();
+        this.groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+        // Camera Setup for 1st Person
+        this.camera.position.set(0, 30, 0); // Head height
+        this.pitch = 0;
+        this.yaw = 0;
+
+        // Lighting
+        this.initLights();
+    }
+
+    initLights() {
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        this.scene.add(ambientLight);
+
+        // Flashlight-like light attached to camera
+        this.spotLight = new THREE.SpotLight(0xffffff, 1.0, 500, Math.PI / 4, 0.5);
+        this.spotLight.castShadow = true;
+        this.scene.add(this.spotLight);
+        this.scene.add(this.spotLight.target);
     }
 
     start() {
@@ -39,8 +67,9 @@ export class GameEngine {
     resizeCanvas() { 
         this.width = window.innerWidth; 
         this.height = window.innerHeight; 
-        this.canvas.width = this.width; 
-        this.canvas.height = this.height; 
+        this.renderer.setSize(this.width, this.height);
+        this.camera.aspect = this.width / this.height;
+        this.camera.updateProjectionMatrix();
     }
 
     initTown() {
@@ -63,7 +92,7 @@ export class GameEngine {
         em.clear();
         
         em.player = new Player(townData.cx * mm.ts, townData.cy * mm.ts, this.c);
-        townData.objs.forEach(o => em.interactables.push(new Interactable(o.x * mm.ts, o.y * mm.ts, o.type, null, this.c)));
+        townData.objs.forEach(o => em.addEntity(em.interactables, new Interactable(o.x * mm.ts, o.y * mm.ts, o.type, null, this.c)));
         
         this.c.get('AudioSystem').startBGM('town');
     }
@@ -95,7 +124,7 @@ export class GameEngine {
             if (typeRand < 0.5) rooms[i].type = 'COMBAT'; else if (typeRand < 0.8) rooms[i].type = 'LOOT';
             if (rooms[i].type === 'COMBAT' || rooms[i].type === 'NORMAL') {
                 let count = randInt(1, 4);
-                for(let j=0; j<count; j++) em.enemies.push(new Enemy((rooms[i].x + rand(1, rooms[i].w - 1)) * mm.ts, (rooms[i].y + rand(1, rooms[i].h - 1)) * mm.ts, Math.random() < 0.3, this.c));
+                for(let j=0; j<count; j++) em.addEntity(em.enemies, new Enemy((rooms[i].x + rand(1, rooms[i].w - 1)) * mm.ts, (rooms[i].y + rand(1, rooms[i].h - 1)) * mm.ts, Math.random() < 0.3, this.c));
             }
             if (rooms[i].type === 'LOOT' || Math.random() < 0.3) {
                 let chestItems = new Array(6).fill(null);
@@ -105,12 +134,12 @@ export class GameEngine {
                     let emptyIdx = chestItems.findIndex(x => x === null);
                     if(emptyIdx !== -1) chestItems[emptyIdx] = { data: this.c.get('DataManager').getItem(id), revealed: false, progress: 0 };
                 }
-                em.interactables.push(new Interactable((rooms[i].cx + rand(-1, 1)) * mm.ts, (rooms[i].cy + rand(-1, 1)) * mm.ts, 'CHEST', { items: chestItems, isOpened: false }, this.c));
+                em.addEntity(em.interactables, new Interactable((rooms[i].cx + rand(-1, 1)) * mm.ts, (rooms[i].cy + rand(-1, 1)) * mm.ts, 'CHEST', { items: chestItems, isOpened: false }, this.c));
             }
         }
-        em.interactables.push(new Interactable(rooms[rooms.length-1].cx * mm.ts, rooms[rooms.length-1].cy * mm.ts, 'EXIT', null, this.c));
+        em.addEntity(em.interactables, new Interactable(rooms[rooms.length-1].cx * mm.ts, rooms[rooms.length-1].cy * mm.ts, 'EXIT', null, this.c));
         if (session.meta.lastDeathCorpse) {
-            em.interactables.push(new Interactable((rooms[0].cx + 1) * mm.ts, rooms[0].cy * mm.ts, 'CORPSE', session.meta.lastDeathCorpse, this.c));
+            em.addEntity(em.interactables, new Interactable((rooms[0].cx + 1) * mm.ts, rooms[0].cy * mm.ts, 'CORPSE', session.meta.lastDeathCorpse, this.c));
             session.meta.lastDeathCorpse = null;
         }
     }
@@ -163,19 +192,45 @@ export class GameEngine {
         let em = this.c.get('EntityManager');
         let ui = this.c.get('UIManager');
         
-        input.mouse.worldX = input.mouse.x + this.camera.x; 
-        input.mouse.worldY = input.mouse.y + this.camera.y;
+        // FPS Camera Rotation - Only if no UI is open
+        if (input.isPointerLocked && !ui.isAnyUIOpen()) {
+            const sensitivity = 0.002;
+            this.yaw -= input.mouseDelta.x * sensitivity;
+            this.pitch -= input.mouseDelta.y * sensitivity;
+            this.pitch = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, this.pitch));
+            
+            this.camera.quaternion.setFromEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'));
+            
+            input.mouseDelta.x = 0;
+            input.mouseDelta.y = 0;
+        }
+
+        // Project Mouse/Reticle to World for Aiming
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+        const aimDistance = 100;
+        input.mouse.worldX = this.camera.position.x + forward.x * aimDistance;
+        input.mouse.worldY = this.camera.position.z + forward.z * aimDistance;
         
         if (em.player) em.player.update(dt);
         if (this.currentState === GAME_STATE.PLAYING) {
-            em.enemies.forEach((e, index) => { e.update(dt); if (e.hp <= 0) em.enemies.splice(index, 1); });
+            for (let i = em.enemies.length - 1; i >= 0; i--) {
+                em.enemies[i].update(dt);
+                if (em.enemies[i].hp <= 0) em.removeEntity(em.enemies, i);
+            }
         }
-        em.projectiles.forEach((p, index) => { p.update(dt); if (p.life <= 0) em.projectiles.splice(index, 1); });
-        em.items.forEach(i => i.update(dt)); em.particles.forEach((p, index) => { p.update(dt); if (p.life <= 0) em.particles.splice(index, 1); });
+        for (let i = em.projectiles.length - 1; i >= 0; i--) {
+            em.projectiles[i].update(dt);
+            if (em.projectiles[i].life <= 0) em.removeEntity(em.projectiles, i);
+        }
+        em.items.forEach(i => i.update(dt));
+        for (let i = em.particles.length - 1; i >= 0; i--) {
+            em.particles[i].update(dt);
+            if (em.particles[i].life <= 0) em.removeEntity(em.particles, i);
+        }
         
         this.handleInteractions();
         
-        // UI 요소 참조 시 안전성 검사 강화
+        // UI Interaction
         if (ui && ui.currentLootContainer?.data?.items && ui.wInv && !ui.wInv.classList.contains('hidden')) {
             if (distance(em.player.x, em.player.y, ui.currentLootContainer.x, ui.currentLootContainer.y) > 80) ui.closeInventory();
             else {
@@ -183,19 +238,30 @@ export class GameEngine {
                 let targetSlotIdx = items.findIndex(slot => slot !== null && !slot.revealed);
                 if (targetSlotIdx !== -1) {
                     let targetSlot = items[targetSlotIdx];
-                    let prevProgress = targetSlot.progress;
                     targetSlot.progress += dt;
-                    if (Math.floor(prevProgress * 8) !== Math.floor(targetSlot.progress * 8)) this.c.get('AudioSystem').play('loot');
-                    if (targetSlot.progress >= 1.5) { targetSlot.revealed = true; targetSlot.progress = 1.5; ui.notify(); }
-                    else { let pBar = document.getElementById(`loot-slot-${targetSlotIdx}`)?.querySelector('.search-bar'); if (pBar) pBar.style.width = `${(targetSlot.progress / 1.5) * 100}%`; }
+                    
+                    // Update Progress Bar UI
+                    let pBar = document.getElementById(`loot-slot-${targetSlotIdx}`)?.querySelector('.search-bar'); 
+                    if (pBar) pBar.style.width = `${(targetSlot.progress / 1.5) * 100}%`;
+
+                    if (targetSlot.progress >= 1.5) { targetSlot.revealed = true; ui.notify(); }
                 }
             }
         }
 
         ui.updateHUD(em.player);
+        
+        // Sync Camera to Player
         if (em.player) {
-            this.camera.x += (em.player.x - this.width / 2 - this.camera.x) * 5 * dt; 
-            this.camera.y += (em.player.y - this.height / 2 - this.camera.y) * 5 * dt;
+            this.camera.position.set(em.player.x, 30, em.player.y);
+            
+            // Sync SpotLight to Camera
+            this.spotLight.position.copy(this.camera.position);
+            const targetPos = this.camera.position.clone().add(forward.multiplyScalar(10));
+            this.spotLight.target.position.copy(targetPos);
+            
+            // Hide player body in 1st person
+            if (em.player.mesh) em.player.mesh.visible = false;
         }
         
         this.render();
@@ -284,55 +350,6 @@ export class GameEngine {
     }
 
     render() {
-        this.ctx.fillStyle = this.currentState === GAME_STATE.TOWN ? '#1a1a1a' : '#0a0a0a'; 
-        this.ctx.fillRect(0, 0, this.width, this.height);
-        
-        let em = this.c.get('EntityManager');
-        let mm = this.c.get('MapManager');
-        
-        this.ctx.save(); this.ctx.translate(-this.camera.x, -this.camera.y);
-        let startCol = Math.max(0, Math.floor(this.camera.x / mm.ts)), endCol = Math.min(mm.cols, Math.floor((this.camera.x + this.width) / mm.ts) + 1);
-        let startRow = Math.max(0, Math.floor(this.camera.y / mm.ts)), endRow = Math.min(mm.rows, Math.floor((this.camera.y + this.height) / mm.ts) + 1);
-
-        for (let r = startRow; r < endRow; r++) {
-            for (let c = startCol; c < endCol; c++) {
-                if (mm.grid[r][c] === 1) { 
-                    this.ctx.fillStyle = this.currentState === GAME_STATE.TOWN ? '#2d3748' : '#1f2937'; 
-                    this.ctx.fillRect(c * mm.ts, r * mm.ts, mm.ts + 1, mm.ts + 1); 
-                    this.ctx.strokeStyle = '#111827'; this.ctx.strokeRect(c * mm.ts, r * mm.ts, mm.ts, mm.ts); 
-                } 
-                else { 
-                    this.ctx.fillStyle = this.currentState === GAME_STATE.TOWN ? '#4a5568' : '#374151'; 
-                    this.ctx.fillRect(c * mm.ts, r * mm.ts, mm.ts + 1, mm.ts + 1); 
-                    if ((r+c)%2===0) { this.ctx.fillStyle = 'rgba(0,0,0,0.1)'; this.ctx.fillRect(c * mm.ts, r * mm.ts, mm.ts, mm.ts); } 
-                }
-            }
-        }
-
-        em.interactables.forEach(i => i.draw(this.ctx)); em.items.forEach(i => i.draw(this.ctx)); em.enemies.forEach(e => e.draw(this.ctx));
-        if(em.player) em.player.draw(this.ctx); 
-        em.projectiles.forEach(p => p.draw(this.ctx)); em.particles.forEach(p => p.draw(this.ctx));
-        
-        let exitObj = em.interactables.find(i => i.type === 'EXIT');
-        if (exitObj && this.currentState === GAME_STATE.PLAYING && em.player) {
-            let dx = exitObj.x - em.player.x, dy = exitObj.y - em.player.y, dist = Math.sqrt(dx*dx + dy*dy);
-            if (dist > 300) {
-                let angle = Math.atan2(dy, dx);
-                this.ctx.save(); this.ctx.translate(em.player.x + Math.cos(angle) * 120, em.player.y + Math.sin(angle) * 120); this.ctx.rotate(angle);
-                this.ctx.fillStyle = 'rgba(34, 197, 94, 0.8)'; this.ctx.beginPath(); this.ctx.moveTo(15, 0); this.ctx.lineTo(-10, -10); this.ctx.lineTo(-5, 0); this.ctx.lineTo(-10, 10); this.ctx.fill(); this.ctx.restore();
-            }
-        }
-        this.ctx.restore();
-
-        if (this.currentState === GAME_STATE.PLAYING) {
-            this.ctx.globalCompositeOperation = 'destination-in';
-            let visionGradient = this.ctx.createRadialGradient(this.width/2, this.height/2, 50, this.width/2, this.height/2, 350);
-            visionGradient.addColorStop(0, 'rgba(0, 0, 0, 1)'); visionGradient.addColorStop(0.7, 'rgba(0, 0, 0, 0.5)'); visionGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-            this.ctx.fillStyle = visionGradient; this.ctx.fillRect(0, 0, this.width, this.height); this.ctx.globalCompositeOperation = 'source-over';
-        } else if (this.currentState === GAME_STATE.TOWN) {
-            let campGradient = this.ctx.createRadialGradient(this.width/2, this.height/2, 200, this.width/2, this.height/2, this.width);
-            campGradient.addColorStop(0, 'rgba(0, 0, 0, 0)'); campGradient.addColorStop(1, 'rgba(0, 0, 0, 0.6)');
-            this.ctx.fillStyle = campGradient; this.ctx.fillRect(0, 0, this.width, this.height);
-        }
+        this.renderer.render(this.scene, this.camera);
     }
 }

@@ -93,6 +93,7 @@ export class UIManager {
      */
     openCraftingMenu() {
         if (this.craftingView) {
+            document.exitPointerLock();
             this.craftingView.show();
             const cm = this.container.get('CraftingManager');
             if (cm) {
@@ -107,6 +108,7 @@ export class UIManager {
 
     openUpgradeMenu() {
         if (this.upgradeView) {
+            document.exitPointerLock();
             this.upgradeView.show();
             this.updateUpgradeUI();
         }
@@ -117,6 +119,7 @@ export class UIManager {
      * 인벤토리를 엽니다. 루팅 시에는 대상 컨테이너 하나만 받습니다.
      */
     openInventory(mode = 'inventory', container = null) {
+        document.exitPointerLock();
         this.inventoryView.setMode(mode);
         this.inventoryView.show();
         this.currentLootContainer = container;
@@ -129,16 +132,45 @@ export class UIManager {
         this.clearItemInfo();
         document.getElementById('btnMobileDrop').classList.add('hidden');
         this.container.get('InputManager').resetMouse();
+        this.tryReacquirePointerLock();
     }
 
     closeCrafting() {
         this.craftingView.hide();
         this.container.get('InputManager').resetMouse();
+        this.tryReacquirePointerLock();
     }
 
     closeUpgrade() {
         this.upgradeView.hide();
         this.container.get('InputManager').resetMouse();
+        this.tryReacquirePointerLock();
+    }
+
+    /**
+     * 모든 UI를 한꺼번에 닫고 포인터 락을 한 번만 요청합니다.
+     */
+    closeAllUI() {
+        this.inventoryView.hide();
+        this.craftingView.hide();
+        this.upgradeView.hide();
+        
+        this.currentLootContainer = null; 
+        this.draggedItemInfo = null; 
+        this.selectedMobileSlot = null; 
+        this.clearItemInfo();
+        document.getElementById('btnMobileDrop').classList.add('hidden');
+        this.container.get('InputManager').resetMouse();
+        
+        this.tryReacquirePointerLock();
+    }
+
+    tryReacquirePointerLock() {
+        const ge = this.container.get('GameEngine');
+        const canvas = document.getElementById('gameCanvas');
+        if (ge && (ge.currentState === GAME_STATE.TOWN || ge.currentState === GAME_STATE.PLAYING) && !this.isAnyUIOpen()) {
+            canvas.requestPointerLock();
+        }
     }
 
     showToast(msg) {

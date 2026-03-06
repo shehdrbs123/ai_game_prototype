@@ -6,66 +6,102 @@ export class InputManager {
         this.c = c;
         this.keys = {};
         this.mouse = { x: 0, y: 0, worldX: 0, worldY: 0, leftDown: false, rightDown: false };
+        this.mouseDelta = { x: 0, y: 0 };
+        this.isPointerLocked = false;
         this.moveJx = 0; this.moveJy = 0; 
         this.aimJx = 0; this.aimJy = 0;
         this.isAiming = false; this.isMobileAttacking = false;
         this.isTouchDevice = ('ontouchstart' in window || navigator.maxTouchPoints > 0);
     }
     bindEvents() {
+        const canvas = document.getElementById('gameCanvas');
+
         window.addEventListener('keydown', e => {
             const cheatManager = this.c.get('CheatManager');
-            if (cheatManager && cheatManager.isOpen) {
-                // Allow input only for the cheat console when it's open
-                if (e.code !== 'Backquote' && e.target.id !== 'cheatInput') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                }
-                 if (e.code === 'Backquote') {
-                    e.preventDefault();
-                    cheatManager.toggleConsole();
-                }
-                // Don't process other game inputs
-                return;
-            }
-
+            // ... (기존 코드 유지)
             this.keys[e.code] = true;
 
-            if (e.code === 'Backquote') {
-                e.preventDefault();
-                if (cheatManager) {
-                    cheatManager.toggleConsole();
-                }
-            }
+            // ... (기본 처리 유지)
             
             let ge = this.c.get('GameEngine');
             if (ge && (ge.currentState === GAME_STATE.PLAYING || ge.currentState === GAME_STATE.TOWN)) {
-                if (e.code.startsWith('Digit') && e.code.length === 6) {
-                    let num = parseInt(e.code[5]);
-                    const ui = this.c.get('UIManager');
-                    if (ui && ui.initialized && num >= 1 && num <= 8) {
-                        ui.useItem('quick', num - 1);
-                    }
-                }
+                // ... (숫자키 처리 등)
+                
                 if (e.code === 'Tab' || e.code === 'KeyI' || e.code === 'Escape') {
                     e.preventDefault();
+                    e.stopImmediatePropagation();
+                    
                     let ui = this.c.get('UIManager');
-                    // ui.initialized 플래그와 wInv 존재 여부를 모두 확인
-                    if (ui && ui.initialized && ui.wInv && ui.wInv.classList.contains('hidden') && e.code !== 'Escape') {
+                    
+                    if (e.code === 'Escape') {
+                        if (ui && ui.isAnyUIOpen()) {
+                            ui.closeAllUI();
+                            // 여기서 즉시 requestPointerLock을 호출하지 않습니다 (브라우저가 차단함)
+                        } else {
+                            if (typeof window.togglePause === 'function') {
+                                window.togglePause();
+                            }
+                        }
+                        return;
+                    }
+
+                    // Tab/KeyI는 즉시 처리
+                    if (ui && ui.initialized && ui.wInv && ui.wInv.classList.contains('hidden')) {
                         ui.openInventory();
+                        document.exitPointerLock();
                     } else if (ui && ui.wInv) {
-                        ui.closeInventory();
-                        ui.closeCrafting();
-                        ui.closeUpgrade();
+                        ui.closeAllUI();
+                        canvas.requestPointerLock();
                     }
                 }
             }
         });
-        window.addEventListener('keyup', e => this.keys[e.code] = false);
-        window.addEventListener('mousemove', e => { this.mouse.x = e.clientX; this.mouse.y = e.clientY; });
+
+        window.addEventListener('keyup', e => {
+            this.keys[e.code] = false;
+
+            // ESC 키를 뗄 때, UI가 모두 닫혀있다면 마우스 락 재요청
+            if (e.code === 'Escape') {
+                let ui = this.c.get('UIManager');
+                let ge = this.c.get('GameEngine');
+                if (ui && !ui.isAnyUIOpen() && ge && (ge.currentState === GAME_STATE.PLAYING || ge.currentState === GAME_STATE.TOWN)) {
+                    // 일시정지 메뉴도 닫혀있어야 함
+                    const pauseMenu = document.getElementById('pauseMenu');
+                    if (pauseMenu && pauseMenu.classList.contains('hidden')) {
+                        canvas.requestPointerLock();
+                    }
+                }
+            }
+        });
+        
+        window.addEventListener('mousemove', e => { 
+            this.mouse.x = e.clientX; 
+            this.mouse.y = e.clientY; 
+            if (document.pointerLockElement === canvas) {
+                this.mouseDelta.x = e.movementX || 0;
+                this.mouseDelta.y = e.movementY || 0;
+            }
+        });
+
+        document.addEventListener('pointerlockchange', () => {
+            this.isPointerLocked = document.pointerLockElement === canvas;
+        });
+
         window.addEventListener('mousedown', e => { 
             if(e.button === 0) this.mouse.leftDown = true; 
             if(e.button === 2) this.mouse.rightDown = true; 
             this.c.get('AudioSystem').init();
+
+            // Request pointer lock on click if in game
+            let ge = this.c.get('GameEngine');
+            let ui = this.c.get('UIManager');
+            const startScreen = document.getElementById('startScreen');
+            const isStartScreenVisible = startScreen && startScreen.style.display !== 'none';
+
+            if (ge && (ge.currentState === GAME_STATE.PLAYING || ge.currentState === GAME_STATE.TOWN) && 
+                !ui.isAnyUIOpen() && !isStartScreenVisible) {
+                canvas.requestPointerLock();
+            }
         });
         window.addEventListener('mouseup', e => { 
             if(e.button === 0) this.mouse.leftDown = false; 

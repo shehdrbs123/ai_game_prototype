@@ -27,6 +27,9 @@ export class MapManager {
         for (let y = startY; y < startY + size; y++) {
             for (let x = startX; x < startX + size; x++) this.grid[y][x] = 0; 
         }
+        
+        this.create3DMap();
+        
         return { cx: startX + 10, cy: startY + 10, objs: [
             { x: startX + 4, y: startY + 10, type: 'STASH_OBJ' },
             { x: startX + 16, y: startY + 10, type: 'WORKBENCH_OBJ' },
@@ -56,6 +59,56 @@ export class MapManager {
             for (let y = Math.min(r1.cy, r2.cy); y <= Math.max(r1.cy, r2.cy); y++) this.grid[y][r2.cx] = 0;
         }
         this.rooms[0].type = 'SPAWN'; this.rooms[this.rooms.length - 1].type = 'EXIT';
+        
+        this.create3DMap();
+        
         return this.rooms;
+    }
+
+    create3DMap() {
+        const ge = this.container.get('GameEngine');
+        const scene = ge.scene;
+        
+        if (this.mapGroup) scene.remove(this.mapGroup);
+        this.mapGroup = new THREE.Group();
+        
+        const wallHeight = this.ts * 3;
+        const wallGeo = new THREE.BoxGeometry(this.ts, wallHeight, this.ts);
+        const floorGeo = new THREE.PlaneGeometry(this.ts, this.ts);
+        
+        const wallMat = new THREE.MeshLambertMaterial({ color: 0x4a5568 });
+        const floorMat = new THREE.MeshLambertMaterial({ color: 0x2d3748 });
+        const floorMatAlt = new THREE.MeshLambertMaterial({ color: 0x1a202c });
+        const ceilingMat = new THREE.MeshLambertMaterial({ color: 0x111827 });
+
+        for (let r = 0; r < this.rows; r++) {
+            for (let c = 0; c < this.cols; c++) {
+                const x = c * this.ts + this.ts / 2;
+                const z = r * this.ts + this.ts / 2;
+
+                if (this.grid[r][c] === 1) {
+                    const wall = new THREE.Mesh(wallGeo, wallMat);
+                    wall.position.set(x, wallHeight / 2, z);
+                    wall.castShadow = true;
+                    wall.receiveShadow = true;
+                    this.mapGroup.add(wall);
+                } else {
+                    // Floor
+                    const floor = new THREE.Mesh(floorGeo, (r + c) % 2 === 0 ? floorMat : floorMatAlt);
+                    floor.rotation.x = -Math.PI / 2;
+                    floor.position.set(x, 0, z);
+                    floor.receiveShadow = true;
+                    this.mapGroup.add(floor);
+
+                    // Ceiling
+                    const ceiling = new THREE.Mesh(floorGeo, ceilingMat);
+                    ceiling.rotation.x = Math.PI / 2;
+                    ceiling.position.set(x, wallHeight, z);
+                    this.mapGroup.add(ceiling);
+                }
+            }
+        }
+        
+        scene.add(this.mapGroup);
     }
 }
