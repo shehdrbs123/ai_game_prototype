@@ -1,0 +1,4 @@
+interface:
+  display_name: "Game Planning"
+  short_description: "Design game concepts, loops, and production-ready planning docs"
+  default_prompt: "Use this skill to structure game concept, core loop, scope, and milestone plans with clear deliverables."

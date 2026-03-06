@@ -50,3 +50,11 @@ PRs should include:
 ## Security & Configuration Tips
 - Do not commit secrets.
 - Keep private media inside `private_assets/` and avoid exposing internal-only assets in docs.
+
+## Project Skills
+- `game-planning`: Use when the user asks for game concepting, core loop/progression design, MVP scope, milestone planning, risk planning, or playtest KPI definition.
+  - Path: `C:/Github/ai_game_prototype_worktree/skills/game-planning/SKILL.md`
+  - Trigger examples:
+    - "게임 기획안 만들어줘"
+    - "이 아이디어로 MVP 범위 정리해줘"
+    - "알파/베타/런치 마일스톤 짜줘"
