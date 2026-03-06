@@ -1,18 +1,51 @@
 
 export class Interactable {
-    constructor(x, y, type, data = null, c) { this.c = c; this.x = x; this.y = y; this.type = type; this.active = true; this.data = data; }
-    draw(ctx) {
-        if (!this.active) return;
-        ctx.save(); ctx.translate(this.x, this.y);
+    constructor(x, y, type, data = null, c) { 
+        this.c = c; this.x = x; this.y = y; this.type = type; this.active = true; this.data = data; 
+        this.init3D();
+    }
+
+    init3D() {
+        this.mesh = new THREE.Group();
         let ts = this.c.get('MapManager').ts;
-        if (this.type === 'CHEST') { ctx.fillStyle = '#8B4513'; ctx.fillRect(-16, -16, 32, 32); ctx.fillStyle = '#D2691E'; ctx.fillRect(-14, -14, 28, 28); if (!this.data || !this.data.isOpened) { ctx.fillStyle = '#DAA520'; ctx.fillRect(-4, -2, 8, 4); } } 
-        else if (this.type === 'EXIT') { ctx.fillStyle = 'rgba(34, 197, 94, 0.4)'; ctx.fillRect(-ts/2, -ts/2, ts, ts); ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 2; ctx.strokeRect(-ts/2, -ts/2, ts, ts); ctx.fillStyle = '#22c55e'; ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI*2); ctx.fill(); } 
-        else if (this.type === 'CORPSE') { ctx.fillStyle = '#666'; ctx.beginPath(); ctx.roundRect(-12, -20, 24, 32, 8); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = '10px Arial'; ctx.textAlign = 'center'; ctx.fillText('RIP', 0, -5); }
-        else if (this.type === 'ENEMY_CORPSE') { ctx.fillStyle = '#666'; ctx.beginPath(); ctx.roundRect(-12, -20, 24, 32, 8); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = '10px Arial'; ctx.textAlign = 'center'; ctx.fillText('RIP', 0, -5); }
-        else if (this.type === 'STASH_OBJ') { ctx.fillStyle = '#4A3728'; ctx.fillRect(-24, -24, 48, 48); ctx.fillStyle = '#70543E'; ctx.fillRect(-20, -20, 40, 40); ctx.fillStyle = 'gold'; ctx.fillRect(-6, -4, 12, 8); ctx.fillStyle = 'white'; ctx.font = '12px Arial'; ctx.textAlign='center'; ctx.fillText('📦', 0, 4); }
-        else if (this.type === 'WORKBENCH_OBJ') { ctx.fillStyle = '#555'; ctx.fillRect(-24, -16, 48, 32); ctx.fillStyle = '#777'; ctx.fillRect(-20, -12, 40, 24); ctx.fillStyle = 'white'; ctx.font = '12px Arial'; ctx.textAlign='center'; ctx.fillText('🔨', 0, 4); }
-        else if (this.type === 'TOWNHALL_OBJ') { ctx.fillStyle = '#8B0000'; ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(-24, 0); ctx.lineTo(24, 0); ctx.fill(); ctx.fillStyle = '#CCC'; ctx.fillRect(-20, 0, 40, 24); ctx.fillStyle = 'white'; ctx.font = '12px Arial'; ctx.textAlign='center'; ctx.fillText('🏗️', 0, 16); }
-        else if (this.type === 'GATE_OBJ') { ctx.fillStyle = 'rgba(59, 130, 246, 0.4)'; ctx.fillRect(-ts/2, -ts/2, ts, ts); ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2; ctx.strokeRect(-ts/2, -ts/2, ts, ts); ctx.fillStyle = '#3b82f6'; ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI*2); ctx.fill(); }
-        ctx.restore();
+        let geo, mat;
+
+        if (this.type === 'CHEST') {
+            geo = new THREE.BoxGeometry(32, 24, 24);
+            mat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+            const chest = new THREE.Mesh(geo, mat);
+            chest.position.y = 12;
+            chest.castShadow = true;
+            chest.receiveShadow = true;
+            this.mesh.add(chest);
+        } else if (this.type === 'EXIT' || this.type === 'GATE_OBJ') {
+            const color = this.type === 'EXIT' ? 0x22c55e : 0x3b82f6;
+            geo = new THREE.CylinderGeometry(ts / 3, ts / 3, ts, 16);
+            mat = new THREE.MeshLambertMaterial({ color: color, transparent: true, opacity: 0.6 });
+            const portal = new THREE.Mesh(geo, mat);
+            portal.position.y = ts / 2;
+            this.mesh.add(portal);
+        } else if (this.type === 'CORPSE' || this.type === 'ENEMY_CORPSE') {
+            geo = new THREE.BoxGeometry(24, 32, 8);
+            mat = new THREE.MeshLambertMaterial({ color: 0x666666 });
+            const tomb = new THREE.Mesh(geo, mat);
+            tomb.position.y = 16;
+            tomb.castShadow = true;
+            this.mesh.add(tomb);
+        } else {
+            // Default for stash, workbench, townhall
+            geo = new THREE.BoxGeometry(40, 40, 40);
+            mat = new THREE.MeshLambertMaterial({ color: 0x718096 });
+            const box = new THREE.Mesh(geo, mat);
+            box.position.y = 20;
+            box.castShadow = true;
+            this.mesh.add(box);
+        }
+
+        this.mesh.position.set(this.x, 0, this.y);
+    }
+
+    draw(ctx) {
+        // No-op for 3D
     }
 }

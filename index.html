@@ -8,10 +8,15 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- MIDI 재생을 위한 통합 의존성: Tone.js + Magenta Core + html-midi-player -->
     <script src="https://cdn.jsdelivr.net/combine/npm/tone@14.7.58,npm/@magenta/music@1.23.1/es6/core.js,npm/html-midi-player@1.5.0"></script>
+    <!-- Three.js: 3D Rendering Engine -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
 </head>
 <body>
 
-<canvas id="gameCanvas"></canvas>
+<canvas id="gameCanvas" style="display: block; width: 100vw; height: 100vh;"></canvas>
+
+<!-- Crosshair for 1st person -->
+<div id="crosshair" style="position: fixed; top: 50%; left: 50%; width: 4px; height: 4px; background: rgba(255,255,255,0.8); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 1000;"></div>
 
 <!-- UI 레이어 -->
 <div id="uiLayer" class="ui-layer">
@@ -288,19 +293,22 @@
     // 게임 시작 버튼 로직
     document.getElementById('btnStartGame').addEventListener('click', () => {
         const startScreen = document.getElementById('startScreen');
-        const player = document.getElementById('bgmPlayer');
+        const canvas = document.getElementById('gameCanvas');
 
         // UI 숨기기
         startScreen.style.opacity = '0';
-        setTimeout(() => { startScreen.style.display = 'none'; }, 500);
-
+        setTimeout(() => { 
+            startScreen.style.display = 'none'; 
+            // Pointer Lock 요청 및 게임 초기화 확인
+            canvas.requestPointerLock();
+        }, 500);
     });
 
     // --- 일시정지 시스템 ---
     window.isGamePaused = false; // 게임 루프에서 이 값을 체크하여 업데이트를 멈추세요.
     const pauseMenu = document.getElementById('pauseMenu');
 
-    function togglePause() {
+    window.togglePause = function togglePause() {
         const startScreen = document.getElementById('startScreen');
         // 게임 시작 전이거나 결과 화면일 때는 포즈 불가
         if (startScreen.style.display !== 'none') return;
@@ -352,17 +360,8 @@
         }
     });
 
-    // ESC 키 이벤트
-    window.addEventListener('keydown', (e) => {
-        if (e.code === 'Escape') {
-            // 다른 UI(인벤토리 등)가 열려있다면 닫는 로직이 우선될 수 있으나,
-            // 여기서는 최상위 우선순위로 포즈를 토글합니다.
-            togglePause();
-        }
-    });
-
     // 버튼 이벤트 연결
-    document.getElementById('btnPauseResume').addEventListener('click', togglePause);
+    document.getElementById('btnPauseResume').addEventListener('click', window.togglePause);
     
     document.getElementById('btnPauseQuit').addEventListener('click', () => {
         if(confirm('정말 타이틀 화면으로 돌아가시겠습니까? 저장되지 않은 진행 상황은 잃게 됩니다.')) {
