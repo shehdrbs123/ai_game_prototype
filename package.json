@@ -1,27 +1,15 @@
 {
   "name": "ai_game_prototype",
   "version": "1.0.0",
-  "description": "A 2D top-down extraction action game prototype built with plain HTML, CSS, and JavaScript. The player enters a procedurally generated dungeon, fights enemies, loots chests, and must escape to bring their findings back to town. In town, the player can upgrade facilities to enhance their character for future runs.",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs"
-  },
+  "description": "Extraction Action RPG Prototype",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/shehdrbs123/ai_game_prototype.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/shehdrbs123/ai_game_prototype/issues"
-  },
-  "homepage": "https://github.com/shehdrbs123/ai_game_prototype#readme",
   "dependencies": {
-    "express": "^5.2.1",
-    "helmet": "^8.1.0"
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
 }

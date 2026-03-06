@@ -1,8 +1,5 @@
+# 의존성 폴더 (Git에 올리지 않음)
 node_modules/
-.DS_Store
-Thumbs.db
-.gemini/
-AIWorkerDiary/
-.vscode/
-.idea/
-*.log
+
+# 로그 파일
+npm-debug.log*
