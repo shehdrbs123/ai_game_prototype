@@ -4,7 +4,8 @@
   "description": "Extraction Action RPG Prototype",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "commit:fmt": "powershell -ExecutionPolicy Bypass -File ./scripts/commit-template.ps1"
   },
   "dependencies": {
     "express": "^4.18.2"
