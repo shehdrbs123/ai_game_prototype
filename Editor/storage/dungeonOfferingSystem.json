@@ -1,0 +1,43 @@
+{
+    "slots": {
+        "offeringSlotCount": 3,
+        "jadeSlotCount": 1
+    },
+    "riskLevels": {
+        "0": { "name": "위험도 0", "jadeId": null },
+        "1": { "name": "위험도 1", "jadeId": "jade_risk_1" },
+        "2": { "name": "위험도 2", "jadeId": "jade_risk_2" },
+        "3": { "name": "위험도 3", "jadeId": "jade_risk_3" }
+    },
+    "offerings": {
+        "herb": { "grade": "common", "gradeCoeff": 1, "targetDungeonId": "forest_cave" },
+        "fabric": { "grade": "common", "gradeCoeff": 1, "targetDungeonId": "forest_cave" },
+        "wood": { "grade": "common", "gradeCoeff": 1, "targetDungeonId": "forest_cave" },
+        "leather": { "grade": "uncommon", "gradeCoeff": 2, "targetDungeonId": "abandoned_mine" },
+        "iron_ore": { "grade": "uncommon", "gradeCoeff": 2, "targetDungeonId": "abandoned_mine" },
+        "scrap": { "grade": "rare", "gradeCoeff": 3, "targetDungeonId": "ancient_lab" },
+        "core": { "grade": "epic", "gradeCoeff": 5, "targetDungeonId": "ancient_lab" },
+        "relic": { "grade": "epic", "gradeCoeff": 5, "targetDungeonId": "ancient_lab" }
+    },
+    "dungeons": {
+        "forest_cave": { "name": "숲 동굴", "profileId": "profile_forest" },
+        "abandoned_mine": { "name": "폐광", "profileId": "profile_mine" },
+        "ancient_lab": { "name": "고대 실험실", "profileId": "profile_lab" }
+    },
+    "generationProfiles": {
+        "profile_forest": { "maxRooms": 8, "minRoomSize": 5, "maxRoomSize": 9 },
+        "profile_mine": { "maxRooms": 10, "minRoomSize": 5, "maxRoomSize": 10 },
+        "profile_lab": { "maxRooms": 12, "minRoomSize": 4, "maxRoomSize": 10 }
+    },
+    "consumePolicy": {
+        "offerings": "consume_all",
+        "jade": "consume_all"
+    },
+    "tieBreakPolicy": {
+        "mode": "seed_weighted_random"
+    },
+    "eventOverrides": {
+        "enabled": false,
+        "forceDungeonId": null
+    }
+}

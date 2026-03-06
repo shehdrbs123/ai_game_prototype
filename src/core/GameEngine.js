@@ -16,6 +16,8 @@ export class GameEngine {
         this.height = 0;
         this.interactTargets = [];
         this.interactTargetIdx = 0;
+        this.nextDungeonPlan = null;
+        this.activeDungeonPlan = null;
 
         // Three.js Core Components
         this.scene = new THREE.Scene();
@@ -97,7 +99,13 @@ export class GameEngine {
         this.c.get('AudioSystem').startBGM('town');
     }
 
-    startRun() {
+    prepareNextDungeonRun(offerings = [], jadeItemId = null, options = {}) {
+        const dm = this.c.get('DataManager');
+        this.nextDungeonPlan = dm.resolveDungeonPlan(offerings, jadeItemId, options);
+        return this.nextDungeonPlan;
+    }
+
+    startRun(runPlan = null) {
         this.currentState = GAME_STATE.PLAYING;
         document.getElementById('channelingUI').classList.add('hidden');
         let ui = this.c.get('UIManager');
@@ -114,7 +122,12 @@ export class GameEngine {
         
         ui.updateAllUI(); 
         let mm = this.c.get('MapManager');
-        let rooms = mm.generateDungeon(); 
+        const dm = this.c.get('DataManager');
+        const selectedRunPlan = runPlan || this.nextDungeonPlan || dm.resolveDungeonPlan([], null);
+        this.activeDungeonPlan = selectedRunPlan;
+        this.nextDungeonPlan = null;
+
+        let rooms = mm.generateDungeon(selectedRunPlan); 
         let em = this.c.get('EntityManager');
         em.clear();
         em.player = new Player(rooms[0].cx * mm.ts, rooms[0].cy * mm.ts, this.c);

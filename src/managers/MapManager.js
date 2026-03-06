@@ -37,13 +37,21 @@ export class MapManager {
             { x: startX + 10, y: startY + 4, type: 'GATE_OBJ' }
         ]};
     }
-    generateDungeon() {
+    generateDungeon(dungeonPlan = null) {
         this.grid = Array.from({length: this.rows}, () => Array(this.cols).fill(1));
         this.rooms = [];
-        const MAX_ROOMS = 8, MIN_SIZE = 5, MAX_SIZE = 10;
+        const profile = dungeonPlan?.generationProfile || null;
+        const riskLevel = dungeonPlan?.riskLevel || 0;
+        const MAX_ROOMS = (profile?.maxRooms || 8) + riskLevel;
+        const MIN_SIZE = profile?.minRoomSize || 5;
+        const MAX_SIZE = profile?.maxRoomSize || 10;
+        const seededInt = this.createSeededIntGenerator(dungeonPlan?.seed);
+
         for (let i = 0; i < MAX_ROOMS * 2 && this.rooms.length < MAX_ROOMS; i++) {
-            let w = randInt(MIN_SIZE, MAX_SIZE), h = randInt(MIN_SIZE, MAX_SIZE);
-            let x = randInt(1, this.cols - w - 1), y = randInt(1, this.rows - h - 1);
+            let w = seededInt ? seededInt(MIN_SIZE, MAX_SIZE) : randInt(MIN_SIZE, MAX_SIZE);
+            let h = seededInt ? seededInt(MIN_SIZE, MAX_SIZE) : randInt(MIN_SIZE, MAX_SIZE);
+            let x = seededInt ? seededInt(1, this.cols - w - 1) : randInt(1, this.cols - w - 1);
+            let y = seededInt ? seededInt(1, this.rows - h - 1) : randInt(1, this.rows - h - 1);
             let cx = Math.floor(x + w / 2), cy = Math.floor(y + h / 2);
             let newRoom = {x, y, w, h, cx, cy, type: 'NORMAL'};
             let failed = false;
@@ -63,6 +71,16 @@ export class MapManager {
         this.create3DMap();
         
         return this.rooms;
+    }
+
+    createSeededIntGenerator(seed) {
+        if (!Number.isInteger(seed)) return null;
+        let s = seed >>> 0;
+        return (min, max) => {
+            s = (Math.imul(1664525, s) + 1013904223) >>> 0;
+            const n = s / 4294967296;
+            return Math.floor(n * (max - min + 1)) + min;
+        };
     }
 
     create3DMap() {

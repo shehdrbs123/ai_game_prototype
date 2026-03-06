@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dungeon Editor</title>
+    <link rel="stylesheet" href="./editor.css" />
+</head>
+<body>
+    <main class="wrap">
+        <h1>Dungeon Offering Editor</h1>
+        <p class="sub">데이터 생산/관리/모니터링용 로컬 에디터</p>
+
+        <section class="panel actions">
+            <button id="btnLoad">Load</button>
+            <button id="btnSave">Save</button>
+            <button id="btnReset">Reset Template</button>
+            <button id="btnMonitor">Refresh Monitor</button>
+            <span id="status">Ready</span>
+        </section>
+
+        <section class="panel event">
+            <h2>Event Override</h2>
+            <label><input type="checkbox" id="evtEnabled" /> 강제 던전 활성화</label>
+            <label>
+                Dungeon ID
+                <input id="evtDungeonId" type="text" placeholder="ancient_lab" />
+            </label>
+            <button id="btnApplyEvent">Apply Event</button>
+        </section>
+
+        <section class="panel monitor">
+            <h2>Monitor</h2>
+            <pre id="monitorBox">-</pre>
+        </section>
+
+        <section class="panel">
+            <h2>Config JSON</h2>
+            <textarea id="configEditor" spellcheck="false"></textarea>
+        </section>
+    </main>
+    <script type="module" src="./editor.js"></script>
+</body>
+</html>

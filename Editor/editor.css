@@ -1,0 +1,93 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: "Segoe UI", sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+}
+
+.wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+h1 {
+    margin: 0;
+    font-size: 28px;
+}
+
+.sub {
+    margin-top: 6px;
+    color: #94a3b8;
+}
+
+.panel {
+    background: #111827;
+    border: 1px solid #1f2937;
+    border-radius: 10px;
+    padding: 14px;
+    margin-top: 14px;
+}
+
+.actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.event {
+    display: grid;
+    gap: 8px;
+}
+
+button {
+    border: 1px solid #334155;
+    background: #1e293b;
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #334155;
+}
+
+input[type="text"] {
+    width: 100%;
+    margin-top: 4px;
+    background: #0b1220;
+    color: #e2e8f0;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 8px;
+}
+
+#status {
+    margin-left: 8px;
+    color: #93c5fd;
+}
+
+#monitorBox {
+    margin: 0;
+    min-height: 100px;
+    white-space: pre-wrap;
+}
+
+#configEditor {
+    width: 100%;
+    min-height: 460px;
+    resize: vertical;
+    background: #020617;
+    color: #e2e8f0;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 12px;
+    font-family: Consolas, monospace;
+    font-size: 13px;
+}
