@@ -58,3 +58,9 @@ PRs should include:
     - "게임 기획안 만들어줘"
     - "이 아이디어로 MVP 범위 정리해줘"
     - "알파/베타/런치 마일스톤 짜줘"
+- `commit-helper`: Use when the user asks to split commits by logic/feature/dependency boundaries, generate commit messages in the required template, or automate commit command usage.
+  - Path: `C:/Github/ai_game_prototype_worktree/skills/commit-helper/SKILL.md`
+  - Trigger examples:
+    - "변경사항 커밋 단위로 나눠줘"
+    - "커밋 메시지 템플릿으로 자동 커밋해줘"
+    - "논리적으로 분리 커밋하고 싶어"
