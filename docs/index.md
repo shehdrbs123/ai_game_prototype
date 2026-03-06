@@ -28,3 +28,4 @@
 | 항목 | 파일 경로 | 역할 요약 | 상세 문서 |
 | --- | --- | --- | --- |
 | Entities & Data | `src/entities/`, `src/data/` | `Player`, `Enemy` 등 개별 객체 클래스 및 아이템 같은 원시 데이터. | [상세 보기](./Structure_API/Entities_and_Data.md) |
+| **AI Skills** | `.gemini/skills/` | **프로젝트 특화 AI 전문가 스킬 (DI, Data, Visual)** | [상세 보기](./Structure_API/AI_Skills.md) |
