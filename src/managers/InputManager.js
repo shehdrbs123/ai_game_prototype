@@ -41,14 +41,18 @@ export class InputManager {
             if (ge && (ge.currentState === GAME_STATE.PLAYING || ge.currentState === GAME_STATE.TOWN)) {
                 if (e.code.startsWith('Digit') && e.code.length === 6) {
                     let num = parseInt(e.code[5]);
-                    if (num >= 1 && num <= 8) this.c.get('UIManager').useItem('quick', num - 1);
+                    const ui = this.c.get('UIManager');
+                    if (ui && ui.initialized && num >= 1 && num <= 8) {
+                        ui.useItem('quick', num - 1);
+                    }
                 }
                 if (e.code === 'Tab' || e.code === 'KeyI' || e.code === 'Escape') {
                     e.preventDefault();
                     let ui = this.c.get('UIManager');
-                    if (ui.wInv.classList.contains('hidden') && e.code !== 'Escape') {
+                    // ui.initialized 플래그와 wInv 존재 여부를 모두 확인
+                    if (ui && ui.initialized && ui.wInv && ui.wInv.classList.contains('hidden') && e.code !== 'Escape') {
                         ui.openInventory();
-                    } else {
+                    } else if (ui && ui.wInv) {
                         ui.closeInventory();
                         ui.closeCrafting();
                         ui.closeUpgrade();
@@ -137,8 +141,10 @@ export class InputManager {
         btnInv.addEventListener('touchstart', e => {
             e.preventDefault();
             let ui = this.c.get('UIManager');
-            if (ui.wInv.classList.contains('hidden')) ui.openInventory();
-            else ui.closeInventory();
+            if (ui && ui.wInv) {
+                if (ui.wInv.classList.contains('hidden')) ui.openInventory();
+                else ui.closeInventory();
+            }
         }, {passive: false});
     }
 

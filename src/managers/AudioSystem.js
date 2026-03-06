@@ -26,12 +26,9 @@ export class AudioSystem {
         this.compressor.connect(this.masterGain);
         this.masterGain.connect(this.ctx.destination);
         
-        // Get the MIDI player element
+        // MIDI 플레이어는 HTML 엘리먼트이므로 Web Audio 노드에 직접 .connect() 할 수 없습니다.
+        // 대신 이 참조를 통해 재생/정지 및 볼륨 속성을 제어합니다.
         this.midiPlayer = document.getElementById('bgmPlayer');
-        if (this.midiPlayer) {
-            // Route the MIDI player's output through our Web Audio API context
-            this.midiPlayer.connect(this.masterGain);
-        }
     }
 
     play(type, vol = 1) {
@@ -117,7 +114,9 @@ export class AudioSystem {
 
     async startBGM(type = 'dungeon') {
         if (!this.initIfNeeded()) return;
-        if (this.currentBGM === type && this.midiPlayer && !this.midiPlayer.player.ended) {
+        // 플레이어 내부 객체(player)가 로드되었는지 확인하는 안전장치 추가
+        // html-midi-player의 내부 구조에 따라 player 속성이 없을 수 있으므로 옵셔널 체이닝 사용
+        if (this.currentBGM === type && this.midiPlayer?.player && !this.midiPlayer.player.ended) {
             return;
         }
         this.currentBGM = type;
@@ -134,11 +133,24 @@ export class AudioSystem {
             const { token } = await response.json();
             console.log('Token received, setting player source.');
             
-            this.midiPlayer.src = `/midi/asset/${trackId}?token=${encodeURIComponent(token)}`;
+            const midiUrl = `/midi/asset/${trackId}?token=${encodeURIComponent(token)}`;
             
-            // The player will start automatically due to the 'loop' attribute,
-            // but we can call start() to be explicit if it's the first time.
-            await this.midiPlayer.start();
+            if (this.midiPlayer) {
+                // Custom Element가 브라우저에 등록될 때까지 대기
+                if (window.customElements && customElements.whenDefined) {
+                    await customElements.whenDefined('midi-player');
+                }
+
+                this.midiPlayer.src = midiUrl;
+                
+                // 내부 라이브러리가 로드되고 urlToNoteSequence가 준비될 때까지 대기 시간을 늘림
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
+                // 플레이어 내부 상태가 'loading'이 아닐 때만 start 호출
+                if (typeof this.midiPlayer.start === 'function' && this.midiPlayer.player) {
+                    await this.midiPlayer.start();
+                }
+            }
             console.log('MIDI BGM started.');
 
         } catch (error) {

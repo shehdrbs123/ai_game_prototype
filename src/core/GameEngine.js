@@ -16,6 +16,8 @@ export class GameEngine {
         this.camera = { x: 0, y: 0 };
         this.width = 0;
         this.height = 0;
+        this.interactTargets = [];
+        this.interactTargetIdx = 0;
     }
 
     start() {
@@ -23,6 +25,14 @@ export class GameEngine {
         window.addEventListener('resize', () => this.resizeCanvas());
         this.resizeCanvas();
         this.initTown();
+
+        // 마우스 휠로 상호작용 대상 전환
+        window.addEventListener('wheel', (e) => {
+            if (this.interactTargets.length > 1) {
+                this.interactTargetIdx = (this.interactTargetIdx + (e.deltaY > 0 ? 1 : -1) + this.interactTargets.length) % this.interactTargets.length;
+            }
+        }, { passive: true });
+
         requestAnimationFrame((t) => this.loop(t));
     }
 
@@ -44,13 +54,6 @@ export class GameEngine {
         ui.closeCrafting();
         ui.closeUpgrade();
         this.c.get('PlayerSession').resizeInventory(); 
-        
-        document.getElementById('whLevel').innerText = this.c.get('PlayerSession').meta.upgrades.warehouse; 
-        document.getElementById('whCostVal').innerText = this.c.get('PlayerSession').meta.upgrades.warehouse * 100; 
-        document.getElementById('whCostMat').innerText = this.c.get('PlayerSession').meta.upgrades.warehouse * 50;
-        document.getElementById('wbLevel').innerText = this.c.get('PlayerSession').meta.upgrades.workbench; 
-        document.getElementById('wbCostVal').innerText = this.c.get('PlayerSession').meta.upgrades.workbench * 150; 
-        document.getElementById('wbCostMat').innerText = this.c.get('PlayerSession').meta.upgrades.workbench * 100;
         
         ui.updateAllUI();
         
@@ -172,16 +175,18 @@ export class GameEngine {
         
         this.handleInteractions();
         
-        if (ui.currentLootContainer && !ui.wInv.classList.contains('hidden')) {
+        // UI 요소 참조 시 안전성 검사 강화
+        if (ui && ui.currentLootContainer?.data?.items && ui.wInv && !ui.wInv.classList.contains('hidden')) {
             if (distance(em.player.x, em.player.y, ui.currentLootContainer.x, ui.currentLootContainer.y) > 80) ui.closeInventory();
             else {
-                let targetSlotIdx = ui.currentLootContainer.data.items.findIndex(slot => slot !== null && !slot.revealed);
+                const items = ui.currentLootContainer.data.items;
+                let targetSlotIdx = items.findIndex(slot => slot !== null && !slot.revealed);
                 if (targetSlotIdx !== -1) {
-                    let targetSlot = ui.currentLootContainer.data.items[targetSlotIdx];
+                    let targetSlot = items[targetSlotIdx];
                     let prevProgress = targetSlot.progress;
                     targetSlot.progress += dt;
                     if (Math.floor(prevProgress * 8) !== Math.floor(targetSlot.progress * 8)) this.c.get('AudioSystem').play('loot');
-                    if (targetSlot.progress >= 1.5) { targetSlot.revealed = true; targetSlot.progress = 1.5; ui.updateLootUI(); }
+                    if (targetSlot.progress >= 1.5) { targetSlot.revealed = true; targetSlot.progress = 1.5; ui.notify(); }
                     else { let pBar = document.getElementById(`loot-slot-${targetSlotIdx}`)?.querySelector('.search-bar'); if (pBar) pBar.style.width = `${(targetSlot.progress / 1.5) * 100}%`; }
                 }
             }
@@ -198,13 +203,39 @@ export class GameEngine {
 
     handleInteractions() {
         let em = this.c.get('EntityManager'); let ui = this.c.get('UIManager'); let input = this.c.get('InputManager');
-        let closest = null, minDist = 50;
-        em.items.forEach(item => { let d = distance(em.player.x, em.player.y, item.x, item.y); if (d < minDist) { minDist = d; closest = { type: 'ITEM', obj: item }; } });
-        em.interactables.forEach(obj => { if (!obj.active) return; let d = distance(em.player.x, em.player.y, obj.x, obj.y); if (d < minDist + 20) { minDist = d; closest = { type: 'OBJ', obj: obj }; } });
 
-        const prompt = document.getElementById('interactPrompt'), text = document.getElementById('interactText');
-        if (closest) {
+        // 범위 내 모든 상호작용 대상 수집
+        let newTargets = [];
+        em.items.forEach(item => { if (distance(em.player.x, em.player.y, item.x, item.y) < 50) newTargets.push({ type: 'ITEM', obj: item }); });
+        em.interactables.forEach(obj => { 
+            if (obj.active && distance(em.player.x, em.player.y, obj.x, obj.y) < 70) newTargets.push({ type: 'OBJ', obj: obj }); 
+        });
+
+        // 대상 목록이 바뀌었는지 확인 (참조 비교)
+        const isSameList = newTargets.length === this.interactTargets.length && 
+                           newTargets.every((t, i) => t.obj === this.interactTargets[i]?.obj);
+        
+        if (!isSameList) {
+            this.interactTargets = newTargets;
+            this.interactTargetIdx = 0;
+        }
+
+        const prompt = document.getElementById('interactPrompt');
+        const text = document.getElementById('interactText');
+        const countUI = document.getElementById('interactCount');
+
+        if (this.interactTargets.length > 0) {
+            const closest = this.interactTargets[this.interactTargetIdx];
             prompt.classList.remove('hidden');
+            
+            // 다중 대상 알림 UI
+            if (this.interactTargets.length > 1) {
+                countUI.classList.remove('hidden');
+                countUI.innerText = `휠 스크롤로 대상 변경 (${this.interactTargetIdx + 1}/${this.interactTargets.length})`;
+            } else {
+                countUI.classList.add('hidden');
+            }
+
             if (closest.type === 'ITEM') text.innerText = `줍기: ${closest.obj.data.name}`;
             if (closest.type === 'OBJ') {
                 if (closest.obj.type === 'CHEST') text.innerText = "상자 열기";
@@ -221,8 +252,8 @@ export class GameEngine {
                 if (closest.type === 'ITEM') { if (ui.tryPickupItem(closest.obj)) em.items = em.items.filter(i => i !== closest.obj); } 
                 else if (closest.type === 'OBJ') {
                     if (closest.obj.type === 'CHEST' || closest.obj.type === 'ENEMY_CORPSE') {
-                        ui.currentLootContainer = closest.obj; closest.obj.data.isOpened = true;
-                        ui.openInventory('loot');
+                        closest.obj.data.isOpened = true;
+                        ui.openInventory('loot', closest.obj);
                     } else if (closest.obj.type === 'EXIT' || closest.obj.type === 'GATE_OBJ') {
                         if (em.player.channeling <= 0) { 
                             em.player.channeling = 3.0; em.player.channelTarget = closest.obj; 
@@ -237,7 +268,7 @@ export class GameEngine {
                     } else if (closest.obj.type === 'WORKBENCH_OBJ') {
                         ui.openCraftingMenu();
                     } else if (closest.obj.type === 'TOWNHALL_OBJ') {
-                        ui.wUpg.classList.remove('hidden'); ui.updateAllUI();
+                        ui.openUpgradeMenu();
                     }
                 }
             }

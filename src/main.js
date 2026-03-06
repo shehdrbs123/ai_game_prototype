@@ -7,6 +7,7 @@ import { InputManager } from './managers/InputManager.js';
 import { MapManager } from './managers/MapManager.js';
 import { EntityManager } from './managers/EntityManager.js';
 import { UIManager } from './managers/UIManager.js';
+import { CraftingManager } from './managers/CraftingManager.js';
 import { CheatManager } from './managers/CheatManager.js';
 import { GameEngine } from './core/GameEngine.js';
 
@@ -17,6 +18,7 @@ app.register('AudioSystem', new AudioSystem());
 app.register('InputManager', new InputManager(app));
 app.register('MapManager', new MapManager(app));
 app.register('EntityManager', new EntityManager(app));
+app.register('CraftingManager', new CraftingManager(app));
 app.register('UIManager', new UIManager(app));
 app.register('CheatManager', new CheatManager(app));
 app.register('GameEngine', new GameEngine(app));
