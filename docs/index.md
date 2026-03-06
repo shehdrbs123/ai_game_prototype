@@ -6,6 +6,7 @@
 
 | 클래스 | 파일 경로 | 역할 요약 | 상세 문서 |
 | --- | --- | --- | --- |
+| `Overview` | - | **전체 프로젝트 구조 및 아키텍처 개요** | [상세 보기](./Structure_API/Architecture_Overview.md) |
 | `DIContainer` | `src/core/DIContainer.js` | 각종 Manager 모듈의 인스턴스를 중앙에서 관리하는 의존성 주입 컨테이너. | [상세 보기](./Structure_API/DIContainer.md) |
 | `GameEngine` | `src/core/GameEngine.js` | 게임의 메인 루프, 상태 관리, 렌더링을 총괄하는 메인 컨트롤 타워. | [상세 보기](./Structure_API/GameEngine.md) |
 
