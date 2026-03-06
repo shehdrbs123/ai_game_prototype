@@ -21,6 +21,9 @@ export const RAW_DATA = {
         { id: 'iron_ore', type: 'material', name: '철광석', emoji: '🪨', value: 15, desc: '철 방어구/무기 제작에 쓰입니다.' },
         { id: 'scrap', type: 'material', name: '고철', emoji: '⚙️', value: 5, desc: '마을 시설 업그레이드용.' },
         { id: 'core', type: 'material', name: '에너지 코어', emoji: '🔋', value: 20, desc: '고급 업그레이드용.' },
+        { id: 'jade_risk_1', type: 'special', name: '위험도 1 옥', emoji: '🟢', value: 30, desc: '출정 위험도를 1로 지정하는 옥.' },
+        { id: 'jade_risk_2', type: 'special', name: '위험도 2 옥', emoji: '🔵', value: 60, desc: '출정 위험도를 2로 지정하는 옥.' },
+        { id: 'jade_risk_3', type: 'special', name: '위험도 3 옥', emoji: '🟣', value: 90, desc: '출정 위험도를 3으로 지정하는 옥.' },
         
         { id: 'sword', type: 'equipment', slot: 'weapon', name: '낡은 검', emoji: '🗡️', value: 20, desc: '부채꼴 범위 공격 (피해 35, 사거리 70)', dmg: 35, range: 70, cd: 0.6 },
         { id: 'spear', type: 'equipment', slot: 'weapon', name: '사냥용 창', emoji: '🔱', value: 30, desc: '직선 찌르기 (피해 30, 사거리 110)', dmg: 30, range: 110, cd: 0.7 },
@@ -49,6 +52,52 @@ export const RAW_DATA = {
         { targetId: 'head_3', ingredients: [{id: 'iron_ore', qty: 2}, {id: 'leather', qty: 1}] },
         { targetId: 'chest_3', ingredients: [{id: 'iron_ore', qty: 4}, {id: 'leather', qty: 2}] },
         { targetId: 'legs_3', ingredients: [{id: 'iron_ore', qty: 3}, {id: 'leather', qty: 1}] },
-        { targetId: 'boots_3', ingredients: [{id: 'iron_ore', qty: 2}, {id: 'leather', qty: 1}] }
-    ]
+        { targetId: 'boots_3', ingredients: [{id: 'iron_ore', qty: 2}, {id: 'leather', qty: 1}] },
+        { targetId: 'jade_risk_1', ingredients: [{id: 'core', qty: 1}, {id: 'scrap', qty: 2}] },
+        { targetId: 'jade_risk_2', ingredients: [{id: 'core', qty: 2}, {id: 'iron_ore', qty: 2}] },
+        { targetId: 'jade_risk_3', ingredients: [{id: 'core', qty: 3}, {id: 'relic', qty: 1}] }
+    ],
+    dungeonOfferingSystem: {
+        slots: {
+            offeringSlotCount: 3,
+            jadeSlotCount: 1
+        },
+        riskLevels: {
+            0: { name: '위험도 0', jadeId: null },
+            1: { name: '위험도 1', jadeId: 'jade_risk_1' },
+            2: { name: '위험도 2', jadeId: 'jade_risk_2' },
+            3: { name: '위험도 3', jadeId: 'jade_risk_3' }
+        },
+        offerings: {
+            herb: { grade: 'common', gradeCoeff: 1, targetDungeonId: 'forest_cave' },
+            fabric: { grade: 'common', gradeCoeff: 1, targetDungeonId: 'forest_cave' },
+            wood: { grade: 'common', gradeCoeff: 1, targetDungeonId: 'forest_cave' },
+            leather: { grade: 'uncommon', gradeCoeff: 2, targetDungeonId: 'abandoned_mine' },
+            iron_ore: { grade: 'uncommon', gradeCoeff: 2, targetDungeonId: 'abandoned_mine' },
+            scrap: { grade: 'rare', gradeCoeff: 3, targetDungeonId: 'ancient_lab' },
+            core: { grade: 'epic', gradeCoeff: 5, targetDungeonId: 'ancient_lab' },
+            relic: { grade: 'epic', gradeCoeff: 5, targetDungeonId: 'ancient_lab' }
+        },
+        dungeons: {
+            forest_cave: { name: '숲 동굴', profileId: 'profile_forest' },
+            abandoned_mine: { name: '폐광', profileId: 'profile_mine' },
+            ancient_lab: { name: '고대 실험실', profileId: 'profile_lab' }
+        },
+        generationProfiles: {
+            profile_forest: { maxRooms: 8, minRoomSize: 5, maxRoomSize: 9 },
+            profile_mine: { maxRooms: 10, minRoomSize: 5, maxRoomSize: 10 },
+            profile_lab: { maxRooms: 12, minRoomSize: 4, maxRoomSize: 10 }
+        },
+        consumePolicy: {
+            offerings: 'consume_all',
+            jade: 'consume_all'
+        },
+        tieBreakPolicy: {
+            mode: 'seed_weighted_random'
+        },
+        eventOverrides: {
+            enabled: false,
+            forceDungeonId: null
+        }
+    }
 };
