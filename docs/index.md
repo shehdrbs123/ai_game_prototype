@@ -28,3 +28,9 @@
 | 항목 | 파일 경로 | 역할 요약 | 상세 문서 |
 | --- | --- | --- | --- |
 | Entities & Data | `src/entities/`, `src/data/` | `Player`, `Enemy` 등 개별 객체 클래스 및 아이템 같은 원시 데이터. | [상세 보기](./Structure_API/Entities_and_Data.md) |
+
+## Planning
+
+- 기획 문서 인덱스: [Planning README](./Planning/README.md)
+- 기본 기획서: [Concept One Pager](./Planning/Concept_One_Pager.md)
+- 멀티플레이 전략: [Multiplayer Strategy](./Planning/Multiplayer_Strategy.md)
