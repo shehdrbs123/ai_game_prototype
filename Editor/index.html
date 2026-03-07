@@ -8,15 +8,40 @@
 </head>
 <body>
     <main class="wrap">
-        <h1>Dungeon Offering Editor</h1>
-        <p class="sub">데이터 생산/관리/모니터링용 로컬 에디터</p>
+        <h1>Game Data Editor</h1>
+        <p class="sub">기획/운영 데이터셋 편집기 (Form / Grid / Raw JSON)</p>
 
         <section class="panel actions">
+            <label>
+                Dataset
+                <select id="datasetSelect"></select>
+            </label>
+            <button id="btnPreviewDiff">Preview Diff</button>
+            <button id="btnRevertLocal">Revert Local</button>
             <button id="btnLoad">Load</button>
             <button id="btnSave">Save</button>
             <button id="btnReset">Reset Template</button>
             <button id="btnMonitor">Refresh Monitor</button>
             <span id="status">Ready</span>
+        </section>
+
+        <section class="panel">
+            <h2>Dataset Tabs</h2>
+            <div id="datasetTabs" class="tabs"></div>
+        </section>
+
+        <section class="panel">
+            <h2>View Mode</h2>
+            <div id="viewModeToggle" class="view-toggle">
+                <button type="button" data-view-mode="form">Form</button>
+                <button type="button" data-view-mode="grid">Grid</button>
+                <button type="button" data-view-mode="raw">Raw JSON</button>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>Validation</h2>
+            <div id="validationSummary">No issues</div>
         </section>
 
         <section class="panel event">
@@ -34,8 +59,18 @@
             <pre id="monitorBox">-</pre>
         </section>
 
-        <section class="panel">
-            <h2>Config JSON</h2>
+        <section id="formPanel" class="panel">
+            <h2>Form View</h2>
+            <div id="formContainer"></div>
+        </section>
+
+        <section id="gridPanel" class="panel panel-hidden">
+            <h2>Grid View</h2>
+            <div id="gridContainer"></div>
+        </section>
+
+        <section id="rawPanel" class="panel panel-hidden">
+            <h2>Raw JSON</h2>
             <textarea id="configEditor" spellcheck="false"></textarea>
         </section>
     </main>
