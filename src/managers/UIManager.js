@@ -9,21 +9,20 @@ import { UpgradeView } from "../ui/UpgradeView.js";
 
 /**
  * UIManager: 게임의 모든 UI 레이어, 팝업, HUD 및 사용자 입력을 통한 데이터 변경을 중계합니다.
- * C# Porting: Unity의 UI Canvas, EventSystem, UI Manager로 대응됩니다.
  */
 export class UIManager extends BaseManager {
-    /**
-     * @param {DIContainer} app 
-     */
     constructor(app) {
         super(app);
         
-        // 상태값
         this.draggedItemInfo = null;
         this.selectedMobileSlot = null;
         this.currentLootContainer = null;
         
-        // View 초기화 (Unity의 UI Prefab 인스턴스와 유사)
+        // 탐색 관련 상태
+        this.lootingIdx = null;
+        this.lootingTimer = null;
+        this.isAutoSearching = true; // 기본값 자동 탐색 ON
+        
         this.inventoryView = new InventoryView(this);
         this.hudView = new HUDView(this);
         this.craftingView = new CraftingView(this);
@@ -37,13 +36,8 @@ export class UIManager extends BaseManager {
         super.init();
         this.bindDOMEvents();
         this.initialized = true;
-        console.log('UIManager initialized and subscribed to EventBus.');
     }
 
-    /**
-     * EventBus를 통한 데이터 변경 감지 설정
-     * C# Porting: Action/Delegate 구독 또는 UnityEvent 연결로 대응됩니다.
-     */
     setupEventListeners() {
         this.events.on('PLAYER_DATA_CHANGED', () => this.updateAllUI());
         this.events.on('PLAYER_INVENTORY_RESIZED', () => this.updateAllUI());
@@ -55,9 +49,6 @@ export class UIManager extends BaseManager {
         this.events.on('MAP_VIEW_UPDATED', () => this.updateAllUI());
     }
 
-    /**
-     * 브라우저 DOM 이벤트 바인딩
-     */
     bindDOMEvents() {
         window.addEventListener('dragover', e => e.preventDefault());
         window.addEventListener('drop', e => {
@@ -65,12 +56,12 @@ export class UIManager extends BaseManager {
             this.handleDropOutside(e);
         });
 
-        window.addEventListener('pointerdown', () => {
-            const audio = this.get('AudioSystem');
-            if (audio) audio.init();
+        window.addEventListener('mousedown', (e) => {
+            if (this.currentLootContainer && this.isAutoSearching && e.button === 0) {
+                this.stopSearching(); 
+            }
         });
 
-        // 상단 닫기 버튼들
         const closeButtons = {
             'btnCloseInv': () => this.closeInventory(),
             'btnCloseCrafting': () => this.closeCrafting(),
@@ -78,16 +69,45 @@ export class UIManager extends BaseManager {
         };
 
         Object.entries(closeButtons).forEach(([id, fn]) => {
-            const el = document.getElementById(id);
-            if (el) el.onclick = fn;
+            this.setClick(id, fn);
         });
 
-        // 기타 고정 버튼들
         this.setClick('btnDoCraft', () => this.doCraft());
         this.setClick('btnSellStash', () => this.sellStash());
         this.setClick('btnReturn', () => this.get('GameEngine').initTown());
         this.setClick('btnUpWH', () => this.upgradeFacility('warehouse'));
         this.setClick('btnUpWB', () => this.upgradeFacility('workbench'));
+        this.setClick('btnToggleAutoSearch', () => this.toggleAutoSearch());
+
+        // --- 설정 메뉴 (Pause Menu) ---
+        this.setClick('btnPauseResume', () => {
+            if (typeof window.togglePause === 'function') window.togglePause();
+        });
+
+        this.setClick('btnPauseSettings', () => {
+            this.showToast("설정 기능은 준비 중입니다.");
+        });
+
+        this.setClick('btnPauseQuit', () => {
+            if (confirm('정말 타이틀 화면으로 돌아가시겠습니까? 저장되지 않은 진행 상황은 잃게 됩니다.')) {
+                location.reload();
+            }
+        });
+
+        const volumeSlider = document.getElementById('volumeSlider');
+        if (volumeSlider) {
+            volumeSlider.oninput = (e) => {
+                const vol = e.target.value / 100;
+                const audio = this.get('AudioSystem');
+                if (audio) {
+                    audio.setMasterVolume(vol);
+                }
+
+                // MIDI 플레이어 볼륨도 직접 조절
+                const bgmPlayer = document.getElementById('bgmPlayer');
+                if (bgmPlayer) bgmPlayer.volume = vol;
+            };
+        }
     }
 
     setClick(id, fn) {
@@ -95,10 +115,11 @@ export class UIManager extends BaseManager {
         if (el) el.onclick = fn;
     }
 
-    // --- UI 창 제어 (C# Porting: SetActive(true/false)) ---
-
     isAnyUIOpen() {
-        return (this.inventoryView.window && !this.inventoryView.window.classList.contains('hidden')) || 
+        const isResultOpen = !document.getElementById('screenResult').classList.contains('hidden');
+        const isPauseOpen = window.isGamePaused; // 일시정지 메뉴 체크 추가
+        return isResultOpen || isPauseOpen ||
+               (this.inventoryView.window && !this.inventoryView.window.classList.contains('hidden')) || 
                (this.craftingView.window && !this.craftingView.window.classList.contains('hidden')) || 
                (this.upgradeView.window && !this.upgradeView.window.classList.contains('hidden'));
     }
@@ -126,11 +147,16 @@ export class UIManager extends BaseManager {
         this.inventoryView.show();
         this.currentLootContainer = container;
         this.updateAllUI();
+
+        if (mode === 'loot' && this.isAutoSearching) {
+            setTimeout(() => this.searchNextAvailableSlot(), 100);
+        }
     }
 
     closeInventory() {
         this.inventoryView.hide();
         this.currentLootContainer = null;
+        this.stopSearching();
         this.tryReacquirePointerLock();
     }
 
@@ -149,6 +175,13 @@ export class UIManager extends BaseManager {
         this.craftingView.hide();
         this.upgradeView.hide();
         this.currentLootContainer = null;
+        this.stopSearching();
+
+        // 일시정지 메뉴가 열려있다면 닫기
+        if (window.isGamePaused && typeof window.togglePause === 'function') {
+            window.togglePause();
+        }
+
         this.tryReacquirePointerLock();
     }
 
@@ -156,11 +189,13 @@ export class UIManager extends BaseManager {
         const ge = this.get('GameEngine');
         const canvas = document.getElementById('gameCanvas');
         if (ge && (ge.currentState === GAME_STATE.TOWN || ge.currentState === GAME_STATE.PLAYING) && !this.isAnyUIOpen()) {
-            canvas.requestPointerLock();
+            try {
+                canvas.requestPointerLock();
+            } catch (e) {
+                console.warn("Pointer lock request failed:", e);
+            }
         }
     }
-
-    // --- 화면 갱신 로직 (View Rendering) ---
 
     showToast(msg) {
         if (!this.toast.el) return;
@@ -173,20 +208,17 @@ export class UIManager extends BaseManager {
         const session = this.get('PlayerSession');
         if (!session) return;
 
-        // 각 서브 뷰 렌더링
         this.hudView.renderQuickSlots(session.run.quickSlots);
         this.inventoryView.renderInventory(session.run.inventory, session.run.quickSlots, session.run.maxSlots);
         this.inventoryView.renderEquip(session.run.equipment);
         this.inventoryView.renderStash(session.meta.stash);
         this.inventoryView.renderLoot(this.currentLootContainer?.data?.items);
 
-        // 상단 재화 정보
         const valuablesEl = document.getElementById('hudValuables');
         const materialsEl = document.getElementById('hudMaterials');
         if (valuablesEl) valuablesEl.innerText = session.meta.valuables;
         if (materialsEl) materialsEl.innerText = session.meta.materials;
 
-        // 제작창 상세 정보 갱신
         const cm = this.get('CraftingManager');
         if (cm && this.craftingView.isOpen()) {
             if (cm.selectedRecipeIdx !== null) this.selectRecipe(cm.selectedRecipeIdx);
@@ -197,7 +229,12 @@ export class UIManager extends BaseManager {
         if (!player) return;
         const session = this.get('PlayerSession');
         this.hudView.updateStatus(player.hp, player.baseMaxHp, player.sp, player.baseMaxSp, session ? session.getDefense() : 0);
-        this.hudView.updateChanneling(player.channeling);
+        
+        let channelText = "탈출 중...";
+        if (player.channelTarget && player.channelTarget.type === 'GATE_OBJ') {
+            channelText = "던전 진입 중...";
+        }
+        this.hudView.updateChanneling(player.channeling, channelText);
     }
 
     updateUpgradeUI() {
@@ -210,8 +247,6 @@ export class UIManager extends BaseManager {
         };
         this.upgradeView.render(stats, costs, session.meta.valuables, session.meta.materials);
     }
-
-    // --- 상호작용 및 명령 (Controller/ViewModel) ---
 
     doCraft() {
         const cm = this.get('CraftingManager');
@@ -254,13 +289,9 @@ export class UIManager extends BaseManager {
         }
     }
 
-    // --- 슬롯 상호작용 핸들러 ---
-
     handleDragStart(e, type, index) {
         this.draggedItemInfo = { type, index };
-        if (e.dataTransfer) {
-            e.dataTransfer.effectAllowed = 'move';
-        }
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
     }
 
     handleRightClickAction(type, index) {
@@ -271,7 +302,6 @@ export class UIManager extends BaseManager {
         e.preventDefault();
         const items = this.getArrRef(type);
         if (!items) return;
-
         const itemObj = type === 'container' ? items[index]?.data : items[index];
         
         if (this.selectedMobileSlot && this.selectedMobileSlot.type === type && this.selectedMobileSlot.index === index) {
@@ -280,8 +310,7 @@ export class UIManager extends BaseManager {
             this.clearItemInfo();
         } else {
             this.selectedMobileSlot = { type, index };
-            if (itemObj) this.showItemInfo(itemObj);
-            else this.clearItemInfo();
+            if (itemObj) this.showItemInfo(itemObj); else this.clearItemInfo();
         }
         this.updateAllUI();
     }
@@ -289,7 +318,6 @@ export class UIManager extends BaseManager {
     handleDrop(e, targetType, targetIndex) {
         if(e) { e.preventDefault(); e.stopPropagation(); }
         if (!this.draggedItemInfo) return;
-
         const session = this.get('PlayerSession');
         const sourceRef = this.getArrRef(this.draggedItemInfo.type);
         const targetRef = this.getArrRef(targetType);
@@ -303,9 +331,7 @@ export class UIManager extends BaseManager {
             const audio = this.get('AudioSystem');
             if (audio) audio.play(targetType === 'equip' ? 'equip' : 'inv_move');
             this.updateAllUI();
-        } else if (result.msg) {
-            this.showToast(result.msg);
-        }
+        } else if (result.msg) this.showToast(result.msg);
         this.draggedItemInfo = null;
     }
 
@@ -313,42 +339,22 @@ export class UIManager extends BaseManager {
         const session = this.get('PlayerSession');
         const items = this.getArrRef(type);
         if (!items) return;
-
         const item = type === 'equip' ? items[index] : (type === 'container' ? items[index]?.data : items[index]);
         if (!item) return;
 
         let result = { success: false };
-
-        // 1. 루팅 중일 때: 인벤토리 <-> 상자
         if (this.currentLootContainer) {
-            if (type === 'container') {
-                result = session.moveToFirstEmpty({ type, idx: index, arr: items }, 'inv', session.run.inventory);
-            } else if (type === 'inv' || type === 'quick') {
-                result = session.moveToFirstEmpty({ type, idx: index, arr: items }, 'container', this.getArrRef('container'));
-            }
-        }
-        // 2. 창고 이용 중일 때
-        else if (this.inventoryView.stashSection && !this.inventoryView.stashSection.classList.contains('hidden')) {
-            if (type === 'stash') {
-                result = session.moveToFirstEmpty({ type, idx: index, arr: items }, 'inv', session.run.inventory);
-            } else if (type === 'inv' || type === 'quick') {
-                result = session.moveToFirstEmpty({ type, idx: index, arr: items }, 'stash', session.meta.stash);
-            }
-        }
-        // 3. 일반 상황: 장착/해제/사용
-        else if (type === 'equip') {
-            if (session.giveItem(item)) {
-                items[index] = null;
-                result = { success: true, msg: `${item.name} 해제` };
-            } else result = { success: false, msg: "가방이 꽉 찼습니다." };
+            if (type === 'container') result = session.moveToFirstEmpty({ type, idx: index, arr: items }, 'inv', session.run.inventory);
+            else if (type === 'inv' || type === 'quick') result = session.moveToFirstEmpty({ type, idx: index, arr: items }, 'container', this.getArrRef('container'));
+        } else if (this.inventoryView.stashSection && !this.inventoryView.stashSection.classList.contains('hidden')) {
+            if (type === 'stash') result = session.moveToFirstEmpty({ type, idx: index, arr: items }, 'inv', session.run.inventory);
+            else if (type === 'inv' || type === 'quick') result = session.moveToFirstEmpty({ type, idx: index, arr: items }, 'stash', session.meta.stash);
+        } else if (type === 'equip') {
+            if (session.giveItem(item)) { items[index] = null; result = { success: true, msg: `${item.name} 해제` }; }
+            else result = { success: false, msg: "가방이 꽉 찼습니다." };
         } else if (item.type === 'equipment') {
-            result = session.swapItems(
-                { type, idx: index, arr: items }, 
-                { type: 'equip', idx: item.slot, arr: session.run.equipment }
-            );
+            result = session.swapItems({ type, idx: index, arr: items }, { type: 'equip', idx: item.slot, arr: session.run.equipment });
         } else if (item.type === 'consumable') {
-            const player = this.get('EntityManager').player;
-            // useItem 로직은 PlayerSession에 구현되어 있어야 함 (기존 로직 참조)
             this.showToast("아이템을 사용했습니다.");
             result = { success: true };
         }
@@ -372,35 +378,85 @@ export class UIManager extends BaseManager {
 
     clearItemInfo() {
         const infoPanel = document.getElementById('itemInfoPanel');
-        // if (infoPanel) infoPanel.classList.add('hidden'); // 항상 보이게 두거나 숨길 수 있음
     }
 
     handleDropOutside(e) {
         if (!this.draggedItemInfo) return;
         const session = this.get('PlayerSession');
-        const ge = this.get('GameEngine');
-        const em = this.get('EntityManager');
-
         const items = this.getArrRef(this.draggedItemInfo.type);
         const itemObj = session.dropItem(this.draggedItemInfo.type, this.draggedItemInfo.index, items);
-
         if (itemObj) {
             const audio = this.get('AudioSystem');
             if (audio) audio.play('drop');
-            
-            if (ge.currentState === GAME_STATE.PLAYING) { 
-                const p = em.player;
-                em.items.push(new ItemDrop(p.x + rand(-20, 20), p.y + rand(-20, 20), itemObj)); 
-                this.showToast(`${itemObj.name} 버림`); 
-            } else { 
-                this.showToast(`[파기됨] ${itemObj.name}`); 
-            } 
+            this.showToast(`${itemObj.name} 버림`); 
         }
         this.draggedItemInfo = null;
         this.updateAllUI();
     }
 
-    // 보조 함수 (기존 구조 유지)
+    // --- 탐색 로직 (Searching/Revealing) ---
+
+    toggleAutoSearch() {
+        this.isAutoSearching = !this.isAutoSearching;
+        const btn = document.getElementById('btnToggleAutoSearch');
+        if (btn) {
+            btn.innerText = `자동 탐색 ${this.isAutoSearching ? 'ON' : 'OFF'}`;
+            btn.classList.toggle('bg-blue-600', this.isAutoSearching);
+            btn.classList.toggle('bg-gray-700', !this.isAutoSearching);
+        }
+        if (this.isAutoSearching) this.searchNextAvailableSlot(); else this.stopSearching();
+    }
+
+    searchNextAvailableSlot() {
+        if (!this.currentLootContainer || !this.isAutoSearching) return;
+        const items = this.getArrRef('container');
+        if (!items) return;
+        const nextIdx = items.findIndex(item => item && !item.revealed);
+        if (nextIdx !== -1) this.startSearching(nextIdx);
+    }
+
+    revealImmediately(index) {
+        // 즉시 공개 대신 해당 슬롯 탐색 시작 (요구사항 반영)
+        this.startSearching(index);
+    }
+
+    startSearching(index) {
+        if (!this.currentLootContainer) return;
+        const items = this.getArrRef('container');
+        if (!items || !items[index] || items[index].revealed) {
+            if (this.isAutoSearching) this.searchNextAvailableSlot();
+            return;
+        }
+        if (this.lootingIdx !== null && this.lootingIdx !== index) this.stopSearching();
+        this.lootingIdx = index;
+        if (!this.lootingTimer) this.lootingTimer = setInterval(() => this.updateSearching(), 33);
+    }
+
+    stopSearching() {
+        if (this.lootingTimer) { clearInterval(this.lootingTimer); this.lootingTimer = null; }
+        this.lootingIdx = null;
+    }
+
+    updateSearching() {
+        if (this.lootingIdx === null || !this.currentLootContainer) { this.stopSearching(); return; }
+        const items = this.getArrRef('container');
+        const slot = items[this.lootingIdx];
+        if (!slot || slot.revealed) {
+            this.stopSearching();
+            if (this.isAutoSearching) this.searchNextAvailableSlot();
+            return;
+        }
+        slot.progress += 0.05;
+        if (slot.progress >= 1.5) {
+            slot.revealed = true;
+            const audio = this.get('AudioSystem');
+            if (audio) audio.play('success');
+            this.stopSearching();
+            if (this.isAutoSearching) this.searchNextAvailableSlot();
+        }
+        this.updateAllUI();
+    }
+
     getArrRef(type) {
         const session = this.get('PlayerSession');
         if(type === 'inv') return session.run.inventory;

@@ -25,15 +25,41 @@ export class SlotRenderer {
 
         // 미탐색 슬롯 처리
         if (type === 'container' && slotData && !isRevealed) {
-            slot.className = `inv-slot bg-gray-800 shadow-inner flex items-center justify-center relative overflow-hidden ${baseClass}`;
+            slot.className = `inv-slot bg-gray-800 shadow-inner flex items-center justify-center relative overflow-hidden ${baseClass} cursor-wait`;        
             slot.innerHTML = `<span class="text-gray-500 font-bold text-lg animate-pulse">?</span>`;
+
             const pBar = document.createElement('div');
             pBar.className = "search-bar absolute bottom-0 left-0 h-1 bg-yellow-500 transition-none";
             const progress = slotData.progress || 0;
             pBar.style.width = `${Math.min(100, (progress / 1.5) * 100)}%`;
             slot.appendChild(pBar);
+
+            // 탐색 이벤트 바인딩 (누르고 있기)
+            const startAction = (e) => { e.preventDefault(); ui.startSearching(index); };
+            const stopAction = () => ui.stopSearching();
+
+            slot.addEventListener('pointerdown', (e) => {
+                if (e.button === 0) startAction(e); // 좌클릭 시에만 Hold 탐색
+            });
+            slot.addEventListener('pointerup', () => {
+                // 자동 탐색 중이 아닐 때만 수동 중단
+                if (!ui.isAutoSearching) stopAction();
+            });
+            slot.addEventListener('pointerleave', () => {
+                // 자동 탐색 중이 아닐 때만 수동 중단
+                if (!ui.isAutoSearching) stopAction();
+            });
+
+            // 요구사항 3: 우클릭 시 해당 슬롯 탐색 시작 (과정을 거침)
+            slot.oncontextmenu = (e) => {
+                e.preventDefault();
+                ui.startSearching(index);
+            };
+
             return slot;
+
         }
+
 
         // 입력 장치 확인
         const im = ui.get('InputManager');

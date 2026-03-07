@@ -11,25 +11,28 @@ export class HUDView {
         this.spBar = document.getElementById('spBar');
         this.defText = document.getElementById('defText');
         this.quickHUD = document.getElementById('quickSlotHUDContainer');
-        this.channelingUI = document.getElementById('channelingUI');
+        this.channelingUI = document.getElementById('channelingUI');    
         this.channelBar = document.getElementById('channelBar');
-    }
+        this.channelText = document.getElementById('channelText');        
+        }
 
-    updateStatus(hp, maxHp, sp, maxSp, defense) {
+        updateStatus(hp, maxHp, sp, maxSp, defense) {
         this.hpBar.style.width = `${(hp / maxHp) * 100}%`;
         this.hpText.innerText = `${Math.floor(hp)}/${maxHp}`;
         this.spBar.style.width = `${(sp / maxSp) * 100}%`;
         this.defText.innerText = `DEF ${defense}`;
-    }
+        }
 
-    updateChanneling(progress) {
+        updateChanneling(progress, text = "탈출 중...") {
         if (progress > 0) {
             this.channelingUI.classList.remove('hidden');
+            if (this.channelText) this.channelText.innerText = text;
             this.channelBar.style.width = `${((3.0 - progress) / 3.0) * 100}%`;
         } else {
             this.channelingUI.classList.add('hidden');
         }
-    }
+        }
+
 
     renderQuickSlots(quickSlots) {
         this.quickHUD.innerHTML = '';
