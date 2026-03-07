@@ -1,4 +1,4 @@
-import { GAME_STATE } from "../data/gameData.js";
+import { GAME_STATE } from "../data/gameState.js";
 import { ItemDrop } from "../entities/ItemDrop.js";
 import { rand } from "../utils.js";
 import { InventoryView } from "../ui/InventoryView.js";
@@ -364,9 +364,17 @@ export class UIManager {
 
     updateUpgradeUI() {
         const stats = this.session.meta.upgrades;
+        const warehouseCfg = this.session.upgradeCfg?.warehouse || {};
+        const workbenchCfg = this.session.upgradeCfg?.workbench || {};
         const costs = {
-            warehouse: { val: 100 * stats.warehouse, mat: 50 * stats.warehouse },
-            workbench: { val: 150 * stats.workbench, mat: 100 * stats.workbench }
+            warehouse: {
+                val: (warehouseCfg.baseValuableCost ?? 100) * stats.warehouse,
+                mat: (warehouseCfg.baseMaterialCost ?? 50) * stats.warehouse
+            },
+            workbench: {
+                val: (workbenchCfg.baseValuableCost ?? 150) * stats.workbench,
+                mat: (workbenchCfg.baseMaterialCost ?? 100) * stats.workbench
+            }
         };
         this.upgradeView.render(stats, costs, this.session.meta.valuables, this.session.meta.materials);
     }

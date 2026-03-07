@@ -1,17 +1,44 @@
 
-import { RAW_DATA } from '../data/gameData.js';
-
 export class DataManager {
     constructor() {
         this.items = new Map();
         this.recipes = [];
-        this.settings = RAW_DATA.settings;
-        this.dungeonOfferingSystem = RAW_DATA.dungeonOfferingSystem || null;
-        this.loadData();
+        this.settings = null;
+        this.dungeonOfferingSystem = null;
+        this.gameplayBalance = null;
+        this.isLoaded = false;
     }
-    loadData() {
-        RAW_DATA.items.forEach(i => this.items.set(i.id, i));
-        RAW_DATA.armorTemplates.forEach(part => {
+
+    async loadJson(path) {
+        const response = await fetch(path);
+        if (!response.ok) {
+            throw new Error(`Failed to load '${path}' (HTTP ${response.status})`);
+        }
+        return response.json();
+    }
+
+    async initialize() {
+        if (this.isLoaded) return;
+
+        const [settings, items, armorTemplates, recipes, dungeonOfferingSystem, gameplayBalance] = await Promise.all([
+            this.loadJson('/src/data/json/settings.json'),
+            this.loadJson('/src/data/json/items.json'),
+            this.loadJson('/src/data/json/armorTemplates.json'),
+            this.loadJson('/src/data/json/recipes.json'),
+            this.loadJson('/src/data/json/dungeonOfferingSystem.json'),
+            this.loadJson('/src/data/json/gameplayBalance.json')
+        ]);
+
+        this.settings = settings;
+        this.dungeonOfferingSystem = dungeonOfferingSystem || null;
+        this.gameplayBalance = gameplayBalance || {};
+        this.loadData(items, armorTemplates, recipes);
+        this.isLoaded = true;
+    }
+
+    loadData(items, armorTemplates, recipes) {
+        items.forEach(i => this.items.set(i.id, i));
+        armorTemplates.forEach(part => {
             for(let i=0; i<3; i++) {
                 let idStr = `${part.slot}_${i+1}`;
                 this.items.set(idStr, {
@@ -21,10 +48,13 @@ export class DataManager {
                 });
             }
         });
-        this.recipes = RAW_DATA.recipes;
+        this.recipes = recipes;
     }
+
     getItem(id) { return this.items.get(id); }
     getRecipes() { return this.recipes; }
+    getSettings() { return this.settings; }
+    getGameplayBalance() { return this.gameplayBalance; }
     getDungeonOfferingSystem() { return this.dungeonOfferingSystem; }
 
     getRiskLevelByJade(jadeItemId) {
@@ -133,14 +163,29 @@ export class DataManager {
     }
 
     getRandomDrop() {
+        const dropTable = this.gameplayBalance?.dropTable || {};
+        const relicChance = dropTable.relicChance ?? 0.1;
+        const materialChance = dropTable.materialChance ?? 0.5;
+        const goldChance = dropTable.goldChance ?? 0.2;
+        const potionChance = dropTable.potionChance ?? 0.15;
+        const materials = Array.isArray(dropTable.materials) && dropTable.materials.length
+            ? dropTable.materials
+            : ['herb', 'fabric', 'wood', 'leather', 'iron_ore', 'scrap', 'core'];
+
         let r = Math.random();
-        if(r < 0.1) return 'relic';
-        if(r < 0.6) {
-            let mats = ['herb', 'fabric', 'wood', 'leather', 'iron_ore', 'scrap', 'core'];
-            return mats[Math.floor(Math.random() * mats.length)];
+        if (r < relicChance) return 'relic';
+
+        const materialThreshold = relicChance + materialChance;
+        if (r < materialThreshold) {
+            return materials[Math.floor(Math.random() * materials.length)];
         }
-        if(r < 0.8) return 'gold';
-        if(r < 0.95) return 'potion';
+
+        const goldThreshold = materialThreshold + goldChance;
+        if (r < goldThreshold) return 'gold';
+
+        const potionThreshold = goldThreshold + potionChance;
+        if (r < potionThreshold) return 'potion';
+
         let equips = Array.from(this.items.values()).filter(i => i.type === 'equipment').map(i => i.id);
         return equips[Math.floor(Math.random() * equips.length)];
     }

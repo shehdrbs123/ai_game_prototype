@@ -1,5 +1,5 @@
 
-import { GAME_STATE } from "../data/gameData.js";
+import { GAME_STATE } from "../data/gameState.js";
 
 export class InputManager {
     constructor(c) {

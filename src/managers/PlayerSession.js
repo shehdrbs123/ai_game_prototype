@@ -1,25 +1,50 @@
 
 export class PlayerSession {
-    constructor() {
+    constructor(container) {
+        this.container = container;
+        this.balance = this.container.get('DataManager').getGameplayBalance()?.playerSession || {};
+        this.inventoryCfg = this.balance.inventory || {};
+        this.upgradeCfg = this.balance.upgrades || {};
+        this.workbenchStatCfg = this.balance.workbenchStats || {};
+        this.sellPolicy = this.balance.sellPolicy || {};
+        this.equipmentSlots = Array.isArray(this.balance.equipmentSlots) && this.balance.equipmentSlots.length
+            ? this.balance.equipmentSlots
+            : ['weapon', 'head', 'chest', 'legs', 'boots'];
+        const stashSize = this.balance.stashSize ?? 500;
+        const quickSlotCount = this.balance.quickSlotCount ?? 8;
+
         this.meta = {
             valuables: 0, materials: 0,
             upgrades: { warehouse: 1, workbench: 1 },
             lastDeathCorpse: null, receivedFreeWeapon: false,
-            stash: new Array(500).fill(null)
+            stash: new Array(stashSize).fill(null)
         };
+        this.quickSlotCount = quickSlotCount;
         this.run = this.getEmptyRunData();
     }
     getEmptyRunData() {
-        let maxSlots = Math.min(20, 6 + (this.meta ? (this.meta.upgrades.warehouse - 1) * 4 : 0));
+        const baseSlots = this.inventoryCfg.baseSlots ?? 6;
+        const slotsPerLevel = this.inventoryCfg.slotsPerWarehouseLevel ?? 4;
+        const maxSlotsCap = this.inventoryCfg.maxSlots ?? 20;
+        let maxSlots = Math.min(maxSlotsCap, baseSlots + (this.meta ? (this.meta.upgrades.warehouse - 1) * slotsPerLevel : 0));
+
+        const equipment = {};
+        this.equipmentSlots.forEach((slot) => {
+            equipment[slot] = null;
+        });
+
         return {
             inventory: new Array(maxSlots).fill(null),
-            quickSlots: new Array(8).fill(null),
-            equipment: { weapon: null, head: null, chest: null, legs: null, boots: null },
+            quickSlots: new Array(this.quickSlotCount).fill(null),
+            equipment,
             maxSlots: maxSlots
         };
     }
     resizeInventory() {
-        let newMax = Math.min(20, 6 + (this.meta.upgrades.warehouse - 1) * 4);
+        const baseSlots = this.inventoryCfg.baseSlots ?? 6;
+        const slotsPerLevel = this.inventoryCfg.slotsPerWarehouseLevel ?? 4;
+        const maxSlotsCap = this.inventoryCfg.maxSlots ?? 20;
+        let newMax = Math.min(maxSlotsCap, baseSlots + (this.meta.upgrades.warehouse - 1) * slotsPerLevel);
         if (newMax > this.run.inventory.length) {
             let diff = newMax - this.run.inventory.length;
             for(let i=0; i<diff; i++) this.run.inventory.push(null);
@@ -115,8 +140,14 @@ export class PlayerSession {
             warehouse: this.meta.upgrades.warehouse || 1,
             workbench: this.meta.upgrades.workbench || 1
         };
-        const costVal = type === 'warehouse' ? 100 * stats.warehouse : 150 * stats.workbench;
-        const costMat = type === 'warehouse' ? 50 * stats.warehouse : 100 * stats.workbench;
+        const warehouseCfg = this.upgradeCfg.warehouse || {};
+        const workbenchCfg = this.upgradeCfg.workbench || {};
+        const costVal = type === 'warehouse'
+            ? (warehouseCfg.baseValuableCost ?? 100) * stats.warehouse
+            : (workbenchCfg.baseValuableCost ?? 150) * stats.workbench;
+        const costMat = type === 'warehouse'
+            ? (warehouseCfg.baseMaterialCost ?? 50) * stats.warehouse
+            : (workbenchCfg.baseMaterialCost ?? 100) * stats.workbench;
 
         if (this.meta.valuables >= costVal && this.meta.materials >= costMat) {
             this.meta.valuables -= costVal;
@@ -134,15 +165,19 @@ export class PlayerSession {
     }
 
     sellStashItems() {
+        const materialIds = Array.isArray(this.sellPolicy.materialIds) ? this.sellPolicy.materialIds : ['herb', 'fabric', 'wood', 'leather', 'iron_ore', 'scrap', 'core'];
+        const defaultValuableValue = this.sellPolicy.defaultValuableValue ?? 10;
+        const defaultMaterialValue = this.sellPolicy.defaultMaterialValue ?? 5;
+
         let soldVal = 0;
         let soldMat = 0;
         this.meta.stash.forEach((item, i) => {
             if (!item) return;
             if (item.type === 'valuable' || item.id === 'gold') {
-                soldVal += (item.value || 10);
+                soldVal += (item.value || defaultValuableValue);
                 this.meta.stash[i] = null;
-            } else if (['herb', 'fabric', 'wood', 'leather', 'iron_ore', 'scrap', 'core'].includes(item.id)) {
-                soldMat += (item.value || 5);
+            } else if (materialIds.includes(item.id)) {
+                soldMat += (item.value || defaultMaterialValue);
                 this.meta.stash[i] = null;
             }
         });
@@ -168,11 +203,19 @@ export class PlayerSession {
     }
     getDefense() {
         let def = 0;
-        ['head', 'chest', 'legs', 'boots'].forEach(s => { if(this.run.equipment[s]) def += this.run.equipment[s].def; });
+        this.equipmentSlots.filter((slot) => slot !== 'weapon').forEach(s => { if(this.run.equipment[s]) def += this.run.equipment[s].def; });
         return def;
     }
-    getMaxHp() { return 100 + (this.meta.upgrades.workbench - 1) * 20; }
-    getMaxSp() { return 100 + (this.meta.upgrades.workbench - 1) * 10; }
+    getMaxHp() {
+        const baseHp = this.workbenchStatCfg.baseHp ?? 100;
+        const hpPerLevel = this.workbenchStatCfg.hpPerLevel ?? 20;
+        return baseHp + (this.meta.upgrades.workbench - 1) * hpPerLevel;
+    }
+    getMaxSp() {
+        const baseSp = this.workbenchStatCfg.baseSp ?? 100;
+        const spPerLevel = this.workbenchStatCfg.spPerLevel ?? 10;
+        return baseSp + (this.meta.upgrades.workbench - 1) * spPerLevel;
+    }
 
     useItem(type, index, player) {
         const items = type === 'inv' ? this.run.inventory : (type === 'quick' ? this.run.quickSlots : this.meta.stash);

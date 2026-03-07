@@ -12,8 +12,11 @@ import { CheatManager } from './managers/CheatManager.js';
 import { GameEngine } from './core/GameEngine.js';
 
 const app = new DIContainer();
-app.register('DataManager', new DataManager());
-app.register('PlayerSession', new PlayerSession());
+const dataManager = new DataManager();
+await dataManager.initialize();
+
+app.register('DataManager', dataManager);
+app.register('PlayerSession', new PlayerSession(app));
 app.register('AudioSystem', new AudioSystem());
 app.register('InputManager', new InputManager(app));
 app.register('MapManager', new MapManager(app));

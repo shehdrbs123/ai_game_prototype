@@ -1,0 +1,19 @@
+[
+    { "id": "gold", "type": "valuable", "name": "금화", "emoji": "💰", "value": 10, "desc": "기본적인 재화입니다." },
+    { "id": "relic", "type": "valuable", "name": "고대 유물", "emoji": "🏺", "value": 50, "desc": "값비싼 유물입니다." },
+    { "id": "potion", "type": "consumable", "name": "회복약", "emoji": "🧪", "value": 0, "desc": "사용 시 체력을 40 회복합니다.", "heal": 40 },
+    { "id": "herb", "type": "material", "name": "약초", "emoji": "🌿", "value": 2, "desc": "회복약 제작에 쓰입니다." },
+    { "id": "fabric", "type": "material", "name": "옷감", "emoji": "🧵", "value": 3, "desc": "천 방어구 제작에 쓰입니다." },
+    { "id": "wood", "type": "material", "name": "튼튼한 나무", "emoji": "🪵", "value": 4, "desc": "무기 제작에 쓰입니다." },
+    { "id": "leather", "type": "material", "name": "동물 가죽", "emoji": "🟤", "value": 8, "desc": "가죽 방어구 제작에 쓰입니다." },
+    { "id": "iron_ore", "type": "material", "name": "철광석", "emoji": "🪨", "value": 15, "desc": "철 방어구/무기 제작에 쓰입니다." },
+    { "id": "scrap", "type": "material", "name": "고철", "emoji": "⚙️", "value": 5, "desc": "마을 시설 업그레이드용." },
+    { "id": "core", "type": "material", "name": "에너지 코어", "emoji": "🔋", "value": 20, "desc": "고급 업그레이드용." },
+    { "id": "jade_risk_1", "type": "special", "name": "위험도 1 옥", "emoji": "🟢", "value": 30, "desc": "출정 위험도를 1로 지정하는 옥." },
+    { "id": "jade_risk_2", "type": "special", "name": "위험도 2 옥", "emoji": "🔵", "value": 60, "desc": "출정 위험도를 2로 지정하는 옥." },
+    { "id": "jade_risk_3", "type": "special", "name": "위험도 3 옥", "emoji": "🟣", "value": 90, "desc": "출정 위험도를 3으로 지정하는 옥." },
+
+    { "id": "sword", "type": "equipment", "slot": "weapon", "name": "낡은 검", "emoji": "🗡️", "value": 20, "desc": "부채꼴 범위 공격 (피해 35, 사거리 70)", "dmg": 35, "range": 70, "cd": 0.6 },
+    { "id": "spear", "type": "equipment", "slot": "weapon", "name": "사냥용 창", "emoji": "🔱", "value": 30, "desc": "직선 찌르기 (피해 30, 사거리 110)", "dmg": 30, "range": 110, "cd": 0.7 },
+    { "id": "bow", "type": "equipment", "slot": "weapon", "name": "단궁", "emoji": "🏹", "value": 40, "desc": "원거리 투사체 (피해 25, 안전한 거리)", "dmg": 25, "range": 500, "cd": 0.8, "isRanged": true }
+]

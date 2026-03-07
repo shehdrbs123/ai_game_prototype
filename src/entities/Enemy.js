@@ -8,10 +8,29 @@ import { createEnemyAnimatorController } from "../data/animatorData.js";
 export class Enemy {
     constructor(x, y, isRanged, c) {
         this.c = c;
-        this.x = x; this.y = y; this.isRanged = isRanged; this.radius = 14;
-        this.maxHp = isRanged ? 40 : 60; this.hp = this.maxHp;
-        this.speed = isRanged ? 70 : 120; this.aggroRange = 350; this.attackRange = isRanged ? 250 : 30;
-        this.attackCooldown = 0; this.state = 'IDLE'; this.stepTimer = Math.random() * 0.4; 
+        const enemyCfg = this.c.get('DataManager').getGameplayBalance()?.enemy || {};
+        const meleeCfg = enemyCfg.melee || {};
+        const rangedCfg = enemyCfg.ranged || {};
+        const archetype = isRanged ? rangedCfg : meleeCfg;
+
+        this.x = x; this.y = y; this.isRanged = isRanged;
+        this.radius = enemyCfg.radius ?? 14;
+        this.maxHp = archetype.maxHp ?? (isRanged ? 40 : 60);
+        this.hp = this.maxHp;
+        this.speed = archetype.speed ?? (isRanged ? 70 : 120);
+        this.aggroRange = enemyCfg.aggroRange ?? 350;
+        this.attackRange = archetype.attackRange ?? (isRanged ? 250 : 30);
+        this.attackCooldown = 0;
+        this.state = 'IDLE';
+        this.stepInterval = enemyCfg.stepInterval ?? 0.4;
+        this.stepTimer = Math.random() * this.stepInterval;
+        this.meleeDamage = meleeCfg.damage ?? 15;
+        this.rangedDamage = rangedCfg.damage ?? 15;
+        this.rangedProjectileSpeed = rangedCfg.projectileSpeed ?? 200;
+        this.meleeAttackCooldown = meleeCfg.attackCooldown ?? 1.0;
+        this.rangedAttackCooldown = rangedCfg.attackCooldown ?? 2.0;
+        this.dropChance = enemyCfg.death?.dropChance ?? 0.6;
+        this.corpseSlotCount = enemyCfg.death?.corpseSlots ?? 6;
         
         // Animator Setup
         this.animator = new Animator(createEnemyAnimatorController());
@@ -24,7 +43,9 @@ export class Enemy {
         this.mesh = new THREE.Group();
         
         const bodyGeo = new THREE.BoxGeometry(this.radius * 2, this.radius * 2, this.radius * 2);
-        const bodyMat = new THREE.MeshLambertMaterial({ color: this.isRanged ? 0x9333ea : 0xef4444 });
+        const enemyCfg = this.c.get('DataManager').getGameplayBalance()?.enemy || {};
+        const colorHex = this.isRanged ? (enemyCfg.ranged?.color || '#9333ea') : (enemyCfg.melee?.color || '#ef4444');
+        const bodyMat = new THREE.MeshLambertMaterial({ color: Number(`0x${colorHex.replace('#', '')}`) });
         this.bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
         this.bodyMesh.position.y = this.radius;
         this.bodyMesh.castShadow = true;
@@ -53,21 +74,21 @@ export class Enemy {
                 if (!mm.checkWall(this.x, this.y + moveY, this.radius)) this.y += moveY;
                 
                 this.stepTimer += dt;
-                if (this.stepTimer > 0.4) {
+                if (this.stepTimer > this.stepInterval) {
                     if (vol > 0) this.c.get('AudioSystem').play('step', vol * 0.6);
                     this.stepTimer = 0;
                 }
             } else {
                 currentSpeed = 0;
-                this.stepTimer = 0.4;
+                this.stepTimer = this.stepInterval;
                 if (this.attackCooldown <= 0) {
                     this.animator.setTrigger('isAttacking');
                     if (this.isRanged) { 
-                        this.attackCooldown = 2.0; this.c.get('AudioSystem').play('enemy_ranged', vol); 
+                        this.attackCooldown = this.rangedAttackCooldown; this.c.get('AudioSystem').play('enemy_ranged', vol); 
                         const em = this.c.get('EntityManager');
-                        em.addEntity(em.projectiles, new Projectile(this.x, this.y, Math.atan2(p.y - this.y, p.x - this.x), 200, 15, false, this.c)); 
+                        em.addEntity(em.projectiles, new Projectile(this.x, this.y, Math.atan2(p.y - this.y, p.x - this.x), this.rangedProjectileSpeed, this.rangedDamage, false, this.c)); 
                     } else { 
-                        this.attackCooldown = 1.0; this.c.get('AudioSystem').play('enemy_melee', vol); p.takeDamage(15); 
+                        this.attackCooldown = this.meleeAttackCooldown; this.c.get('AudioSystem').play('enemy_melee', vol); p.takeDamage(this.meleeDamage); 
                     }
                 }
             }
@@ -103,11 +124,11 @@ export class Enemy {
         this.hp -= amt; this.state = 'CHASE';
         if (this.hp <= 0) {
             this.animator.setBool('isDead', true);
-            if (Math.random() < 0.6) {
+            if (Math.random() < this.dropChance) {
                 const id = this.c.get('DataManager').getRandomDrop();
                 if (!id) return;
                 const itemData = this.c.get('DataManager').getItem(id);
-                const loot = new Array(6).fill(null);
+                const loot = new Array(this.corpseSlotCount).fill(null);
                 loot[0] = { data: itemData, revealed: false, progress: 0 };
                 const corpse = new Interactable(this.x, this.y, 'ENEMY_CORPSE', { items: loot, isOpened: false }, this.c);
                 const em = this.c.get('EntityManager');

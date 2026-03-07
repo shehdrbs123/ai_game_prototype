@@ -1,0 +1,21 @@
+[
+    { "targetId": "potion", "ingredients": [{ "id": "herb", "qty": 2 }] },
+    { "targetId": "sword", "ingredients": [{ "id": "wood", "qty": 2 }, { "id": "iron_ore", "qty": 1 }] },
+    { "targetId": "spear", "ingredients": [{ "id": "wood", "qty": 3 }, { "id": "iron_ore", "qty": 2 }] },
+    { "targetId": "bow", "ingredients": [{ "id": "wood", "qty": 4 }, { "id": "leather", "qty": 1 }] },
+    { "targetId": "head_1", "ingredients": [{ "id": "fabric", "qty": 2 }] },
+    { "targetId": "chest_1", "ingredients": [{ "id": "fabric", "qty": 4 }] },
+    { "targetId": "legs_1", "ingredients": [{ "id": "fabric", "qty": 3 }] },
+    { "targetId": "boots_1", "ingredients": [{ "id": "fabric", "qty": 2 }] },
+    { "targetId": "head_2", "ingredients": [{ "id": "leather", "qty": 2 }] },
+    { "targetId": "chest_2", "ingredients": [{ "id": "leather", "qty": 4 }] },
+    { "targetId": "legs_2", "ingredients": [{ "id": "leather", "qty": 3 }] },
+    { "targetId": "boots_2", "ingredients": [{ "id": "leather", "qty": 2 }] },
+    { "targetId": "head_3", "ingredients": [{ "id": "iron_ore", "qty": 2 }, { "id": "leather", "qty": 1 }] },
+    { "targetId": "chest_3", "ingredients": [{ "id": "iron_ore", "qty": 4 }, { "id": "leather", "qty": 2 }] },
+    { "targetId": "legs_3", "ingredients": [{ "id": "iron_ore", "qty": 3 }, { "id": "leather", "qty": 1 }] },
+    { "targetId": "boots_3", "ingredients": [{ "id": "iron_ore", "qty": 2 }, { "id": "leather", "qty": 1 }] },
+    { "targetId": "jade_risk_1", "ingredients": [{ "id": "core", "qty": 1 }, { "id": "scrap", "qty": 2 }] },
+    { "targetId": "jade_risk_2", "ingredients": [{ "id": "core", "qty": 2 }, { "id": "iron_ore", "qty": 2 }] },
+    { "targetId": "jade_risk_3", "ingredients": [{ "id": "core", "qty": 3 }, { "id": "relic", "qty": 1 }] }
+]

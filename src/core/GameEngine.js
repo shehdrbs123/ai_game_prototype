@@ -1,5 +1,5 @@
 
-import { GAME_STATE } from "../data/gameData.js";
+import { GAME_STATE } from "../data/gameState.js";
 import { distance, rand, randInt } from "../utils.js";
 import { Player } from "../entities/Player.js";
 import { Enemy } from "../entities/Enemy.js";
@@ -114,8 +114,16 @@ export class GameEngine {
         this.c.get('AudioSystem').startBGM('dungeon'); 
         
         let session = this.c.get('PlayerSession');
+        const gameplayBalance = this.c.get('DataManager').getGameplayBalance() || {};
+        const runCfg = gameplayBalance.runGeneration || {};
         if (!session.meta.receivedFreeWeapon) {
-            let wps = [this.c.get('DataManager').getItem('sword'), this.c.get('DataManager').getItem('spear'), this.c.get('DataManager').getItem('bow')]; 
+            const freeWeaponIds = Array.isArray(runCfg.freeWeaponIds) && runCfg.freeWeaponIds.length
+                ? runCfg.freeWeaponIds
+                : ['sword', 'spear', 'bow'];
+            let wps = freeWeaponIds.map((id) => this.c.get('DataManager').getItem(id)).filter(Boolean);
+            if (wps.length === 0) {
+                wps = [this.c.get('DataManager').getItem('sword'), this.c.get('DataManager').getItem('spear'), this.c.get('DataManager').getItem('bow')].filter(Boolean);
+            }
             session.run.equipment.weapon = wps[randInt(0, wps.length)]; session.meta.receivedFreeWeapon = true;
             setTimeout(() => ui.showToast("테스트용 랜덤 무기 자동 장착!"), 500);
         }
@@ -131,17 +139,32 @@ export class GameEngine {
         let em = this.c.get('EntityManager');
         em.clear();
         em.player = new Player(rooms[0].cx * mm.ts, rooms[0].cy * mm.ts, this.c);
+
+        const roomTypeCfg = runCfg.roomType || {};
+        const enemySpawnCfg = runCfg.enemySpawn || {};
+        const chestSpawnCfg = runCfg.chestSpawn || {};
+        const combatChance = roomTypeCfg.combatChance ?? 0.5;
+        const lootChance = roomTypeCfg.lootChance ?? 0.3;
+        const enemySpawnMin = enemySpawnCfg.minPerRoom ?? 1;
+        const enemySpawnMax = enemySpawnCfg.maxPerRoom ?? 4;
+        const rangedEnemyChance = enemySpawnCfg.rangedChance ?? 0.3;
+        const chestSlots = chestSpawnCfg.slotCount ?? 6;
+        const chestMinItems = chestSpawnCfg.minItems ?? 1;
+        const chestMaxItems = chestSpawnCfg.maxItems ?? 4;
+        const chestChanceLootRoom = chestSpawnCfg.chanceInLootRoom ?? 1;
+        const chestChanceNormalRoom = chestSpawnCfg.chanceInNormalRoom ?? 0.3;
         
         for (let i = 1; i < rooms.length - 1; i++) {
             let typeRand = Math.random();
-            if (typeRand < 0.5) rooms[i].type = 'COMBAT'; else if (typeRand < 0.8) rooms[i].type = 'LOOT';
+            if (typeRand < combatChance) rooms[i].type = 'COMBAT'; else if (typeRand < combatChance + lootChance) rooms[i].type = 'LOOT';
             if (rooms[i].type === 'COMBAT' || rooms[i].type === 'NORMAL') {
-                let count = randInt(1, 4);
-                for(let j=0; j<count; j++) em.addEntity(em.enemies, new Enemy((rooms[i].x + rand(1, rooms[i].w - 1)) * mm.ts, (rooms[i].y + rand(1, rooms[i].h - 1)) * mm.ts, Math.random() < 0.3, this.c));
+                let count = randInt(enemySpawnMin, enemySpawnMax);
+                for(let j=0; j<count; j++) em.addEntity(em.enemies, new Enemy((rooms[i].x + rand(1, rooms[i].w - 1)) * mm.ts, (rooms[i].y + rand(1, rooms[i].h - 1)) * mm.ts, Math.random() < rangedEnemyChance, this.c));
             }
-            if (rooms[i].type === 'LOOT' || Math.random() < 0.3) {
-                let chestItems = new Array(6).fill(null);
-                let count = randInt(1, 4);
+            const chestSpawnChance = rooms[i].type === 'LOOT' ? chestChanceLootRoom : chestChanceNormalRoom;
+            if (Math.random() < chestSpawnChance) {
+                let chestItems = new Array(chestSlots).fill(null);
+                let count = randInt(chestMinItems, chestMaxItems);
                 for(let j=0; j<count; j++) {
                     let id = this.c.get('DataManager').getRandomDrop();
                     let emptyIdx = chestItems.findIndex(x => x === null);
@@ -171,7 +194,8 @@ export class GameEngine {
         const title = document.getElementById('resultTitle'), sub = document.getElementById('resultSub'), list = document.getElementById('resultList');
         list.innerHTML = '';
         let session = this.c.get('PlayerSession');
-        let allItems = [...session.run.inventory, ...session.run.quickSlots, session.run.equipment.head, session.run.equipment.chest, session.run.equipment.legs, session.run.equipment.boots, session.run.equipment.weapon].filter(i => i !== null);
+        const equippedItems = session.equipmentSlots.map((slot) => session.run.equipment[slot]);
+        let allItems = [...session.run.inventory, ...session.run.quickSlots, ...equippedItems].filter(i => i !== null);
 
         if (success) {
             title.innerText = "탈출 성공!"; title.className = "text-4xl md:text-6xl font-black mb-4 text-center text-green-500";
@@ -185,7 +209,11 @@ export class GameEngine {
             }
             session.meta.lastDeathCorpse = null; 
         } else {
-            session.run.inventory.fill(null); session.run.quickSlots.fill(null); session.run.equipment = { weapon: null, head: null, chest: null, legs: null, boots: null };
+            session.run.inventory.fill(null);
+            session.run.quickSlots.fill(null);
+            const resetEquipment = {};
+            session.equipmentSlots.forEach((slot) => { resetEquipment[slot] = null; });
+            session.run.equipment = resetEquipment;
             title.innerText = "KIA (사망)"; title.className = "text-4xl md:text-6xl font-black mb-4 text-center text-red-600";
             sub.innerText = "모든 물품을 잃고 구조되었습니다."; list.innerHTML = '<li class="text-red-400 text-center py-4 font-bold">인벤토리/장착 중인 모든 항목 손실</li>';
             allItems.forEach(item => { let li = document.createElement('li'); li.className = "flex justify-between items-center bg-red-900 bg-opacity-30 p-2 rounded text-gray-500 line-through"; li.innerHTML = `<span><span class="text-lg">${item.emoji}</span> ${item.name}</span>`; list.appendChild(li); });

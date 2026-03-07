@@ -1,5 +1,4 @@
 
-import { RAW_DATA } from '../data/gameData.js';
 import { randInt } from '../utils.js';
 
 export class MapManager {
@@ -7,9 +6,10 @@ export class MapManager {
         this.container = container;
         this.grid = [];
         this.rooms = [];
-        this.ts = RAW_DATA.settings.tileSize;
-        this.cols = RAW_DATA.settings.mapCols;
-        this.rows = RAW_DATA.settings.mapRows;
+        const settings = this.container.get('DataManager').getSettings();
+        this.ts = settings.tileSize;
+        this.cols = settings.mapCols;
+        this.rows = settings.mapRows;
     }
     checkWall(x, y, radius) {
         let startCol = Math.floor((x - radius) / this.ts), endCol = Math.floor((x + radius) / this.ts);

@@ -1,5 +1,5 @@
 
-import { GAME_STATE } from "../data/gameData.js";
+import { GAME_STATE } from "../data/gameState.js";
 import { Projectile } from "./Projectile.js";
 import { distance } from '../utils.js';
 import { Animator } from "../core/Animator.js";
