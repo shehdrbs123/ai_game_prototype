@@ -8,8 +8,9 @@
 
 1.  **매니저 패턴 (Manager Pattern):** 게임의 각 주요 기능(입력, 엔티티, UI, 사운드 등)은 독립적인 `Manager` 클래스에 의해 관리됩니다.
 2.  **의존성 주입 (Dependency Injection):** `DIContainer`를 통해 모든 매니저 인스턴스를 중앙에서 관리하며, 각 매니저는 필요한 다른 매니저에 접근할 때 이 컨테이너를 사용합니다. 이를 통해 모듈 간의 결합도를 낮춥니다.
-3.  **데이터 중심 설계 (Data-Driven Design):** 아이템, 제작법, 초기 스탯 등 모든 게임 밸런스 데이터는 로직과 분리되어 `src/data/gameData.js`에서 관리됩니다.
-4.  **UI MVVM 패턴:** `UIManager`는 Model(`PlayerSession`)과 View(HTML) 사이에서 ViewModel 역할을 수행하며, 데이터와 UI의 상태를 동기화합니다.
+3.  **3D 렌더링 시스템 (Rendering System):** `Three.js`를 사용하여 3D 공간을 구축하고, `FBXLoader`를 통해 3D 에셋을 로드합니다. `Animator` 클래스를 통해 본(Bone) 애니메이션을 제어합니다.
+4.  **데이터 중심 설계 (Data-Driven Design):** 아이템, 제작법, 초기 스탯 등 모든 게임 밸런스 데이터는 로직과 분리되어 `src/data/gameData.js`에서 관리됩니다.
+5.  **UI MVVM 패턴:** `UIManager`는 Model(`PlayerSession`)과 View(HTML) 사이에서 ViewModel 역할을 수행하며, 데이터와 UI의 상태를 동기화합니다.
 
 ---
 
@@ -44,8 +45,8 @@
 2.  **메인 루프 (`GameEngine.loop`):**
     *   `InputManager`를 통해 현재 프레임의 입력을 확인합니다.
     *   `isGamePaused` 상태가 아닐 때만 `update(deltaTime)`를 실행합니다.
-    *   `EntityManager`가 관리하는 모든 엔티티(플레이어, 적 등)의 상태를 업데이트합니다.
-    *   `render()`를 호출하여 Canvas에 맵과 엔티티를 그립니다.
+    *   `EntityManager`가 관리하는 모든 엔티티(플레이어, 적 등)의 상태와 애니메이션을 업데이트합니다.
+    *   `Three.js WebGLRenderer`를 호출하여 3D Scene을 렌더링합니다.
     *   `UIManager`를 통해 현재 상태에 맞는 UI를 갱신합니다.
 
 3.  **상태 전환 (`GAME_STATE`):**
@@ -75,6 +76,8 @@
 | Web/JS Component | Unity/C# Equivalent | 이식 시 주의사항 |
 | :--- | :--- | :--- |
 | `DIContainer` | `Zenject` / `Extenject` / `Service Locator` | 인터페이스 기반 바인딩 추천 |
+| `Three.js Scene` | `Unity Scene` | 좌표계 차이(Y-up vs Z-up) 유의 |
+| `Animator.js` | `Animator Controller` | 파라미터 기반 상태 전환 구조 유지 |
 | `BaseManager` | `MonoBehaviour` 또는 `ScriptableObject` | `init()` -> `Awake`/`Start` 대응 |
 | `EventBus` | `UnityEvent`, `Action`, `delegate` | 형식 안정성(Type-safe) 이벤트 정의 |
 | `DataManager` | `JSON Serialization` + `ScriptableObject` | `gameData.js`를 JSON/C# Class로 변환 |

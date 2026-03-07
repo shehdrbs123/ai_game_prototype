@@ -1,10 +1,19 @@
 
 export class Interactable {
-    constructor(x, y, type, data = null, c) { 
-        this.c = c; this.x = x; this.y = y; this.type = type; this.active = true; this.data = data; 
+    constructor(x, y, type, data = null, c) {
+        this.c = c; this.x = x; this.y = y; this.type = type; this.active = true; 
+
+        // 데이터 구조 표준화: 루팅 가능한 객체는 항상 { items: [] } 형식을 갖도록 보정
+        if (data && Array.isArray(data.items)) {
+            this.data = data;
+        } else if (Array.isArray(data)) {
+            this.data = { items: data };
+        } else {
+            this.data = data || { items: [] };
+        }
+
         this.init3D();
     }
-
     init3D() {
         this.mesh = new THREE.Group();
         let ts = this.c.get('MapManager').ts;

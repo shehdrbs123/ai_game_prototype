@@ -18,7 +18,11 @@ MVVM(Model-View-ViewModel) 아키텍처 패턴을 기반으로 게임의 모든 
 *   `closeInventory()`, `closeCrafting()`, `closeUpgrade()`: 각 UI 창을 닫고 마우스 입력을 초기화합니다.
 *   `isAnyUIOpen()`: 현재 화면에 활성화된 UI 창이 있는지 여부를 반환합니다.
 
-### 2. 데이터 바인딩 및 렌더링 (Data Binding & Rendering)
+### 2. 일시정지 및 설정 메뉴 (Pause & Settings Menu)
+*   `bindDOMEvents()` 내부에서 `btnPauseResume`, `btnPauseSettings`, `btnPauseQuit` 및 `volumeSlider` 이벤트를 바인딩하여 관리합니다.
+*   `volumeSlider` 조절 시 `AudioSystem.setMasterVolume`과 연동하여 전체 볼륨을 실시간으로 반영합니다.
+
+### 3. 데이터 바인딩 및 렌더링 (Data Binding & Rendering)
 *   `updateAllUI()`: `PlayerSession`의 전체 데이터(인벤토리, 장비, 창고, 재화 등)를 현재 View에 동기화합니다.
 *   `updateHUD(player)`: 플레이어의 HP, SP, 방어력, 채널링(상자 열기 등) 상태를 실시간으로 HUD에 반영합니다.
 *   `createSlotHTML(type, index, slotData, label, isHUD)`: 아이템 슬롯 DOM을 동적으로 생성하며, 해당 슬롯에 필요한 드래그 앤 드롭 및 터치 이벤트를 자동으로 바인딩합니다.

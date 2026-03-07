@@ -1,8 +1,5 @@
 {
   "hooksConfig": {
-    "disabled": [
-      "load-ai-context",
-      "quality-gate"
-    ]
+    "disabled": []
   }
 }

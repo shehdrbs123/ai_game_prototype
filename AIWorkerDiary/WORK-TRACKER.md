@@ -1,25 +1,27 @@
-
 # WORK-TRACKER
 
 ## 📌 Current Focus
 | Task ID | Task Name | Status | Artifact | Link |
 | --- | --- | --- | --- | --- |
-| **F-01** | **[Standard] Commit Project Changes** | Phase 5: Validation | [Artifacts/F-01/5_Validation.md](./AIWorkerDiary/Artifacts/00_Draft/F-01_Commit_Project_Changes/5_Validation.md) | [main 3c22299] |
-| **F-01** | **[Standard] Custom Skills Creation** | Document Expert | Phase 9 (Finalize) | Standard | `./AIWorkerDiary/Artifacts/00_Draft/F-01_Custom_Skills_Creation/9_Finalize.md` |
-| **F-02** | **[Standard] Implementation Specialist Skill Creation** | Software Engineer | Phase 9 (Finalize) | Standard | `./AIWorkerDiary/Artifacts/00_Draft/F-02_Implementation_Specialist_Skill_Creation/9_Finalize.md` |
+| **F-05** | **[Standard] Fix Settings Menu Functionality** | Done | [Artifacts/F-05/STATUS.md](./AIWorkerDiary/Artifacts/01_Complete/F-05_Fix_Settings_Menu_Functionality/STATUS.md) | [Settings Menu Fixed] |
+| **F-04** | **[Standard] 3D Transition & Architecture Refactoring** | Done | [Artifacts/F-04/STATUS.md](./AIWorkerDiary/Artifacts/01_Complete/F-04_3D_Transition_and_Architecture_Refactoring/STATUS.md) | [Bugs Fixed & UX Improved] |
 
 ## 📝 Activity Log
-- **2026-03-05:** Task F-01 started. 6 commits performed to organize project structure.
-- **2026-03-05:** Performing Zero-Base Review to verify commit integrity.
-- **2026-03-06:** [F-02] Phase 9 (Finalize) 진입. 전체 작업 요약 및 정리.
-- **2026-03-06:** [F-03] Phase 1 (Problem) 시작. 구현 전담 스킬 정의 및 생성 준비.
+- **2026-03-07:** [F-04] Phase 9 (Finalize) 완료. 작업 폴더 아카이빙 및 문서화 최종 완료.
+- **2026-03-07:** [F-04] Phase 8 (Document) 완료. 영구 문서(`docs/`) 반영 완료.
+- **2026-03-07:** [F-04] Phase 5 (Validation) 재개. Auto-Reveal 및 Mouse Lock 버그 수정 후 추가 검증 대기.
+- **2026-03-07:** [F-05] Phase 9 (Finalize) 완료. 작업 폴더 아카이빙 및 문서화 완료.
+- **2026-03-07:** [F-05] Phase 5 (Validation) 완료. 모든 기능의 코드 레벨 검증 통과.
+- **2026-03-07:** [F-05] Phase 4 (Execute) 완료. UIManager 및 index.html 수정 완료.
+- **2026-03-07:** [F-05] Phase 1~3 완료 (Problem, Research, Plan).
 
 ## 🚀 Requests
 | ID | Title | Priority | Status |
 | --- | --- | --- | --- |
-| R-01 | Commit current staged and unstaged changes | High | Done |
+| R-02 | Fix settings menu buttons (Resume, Settings, Quit) | High | Done |
 
 ## 🛠 Feature Matrix
 | ID | Feature Name | Description | Status |
 | --- | --- | --- | --- |
-| F-01 | Commit Project Changes | Logical separation of commits | Phase 5 |
+| **F-05** | **Fix Settings Menu Functionality** | Connect functionality to Resume, Settings, and Quit buttons in the pause menu. | Done |
+| F-04 | 3D Transition & Architecture Refactoring | Refactoring for 3D and improving UX | Phase 5 |
