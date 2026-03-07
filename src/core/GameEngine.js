@@ -82,13 +82,16 @@ export class GameEngine extends BaseManager {
 
     initTown() {
         this.currentState = GAME_STATE.TOWN;
-        
+
         const ui = this.get('UIManager');
         ui.closeAllUI();
-        
-        this.get('PlayerSession').resizeInventory(); 
+
+        // 결과 화면 숨김 추가
+        document.getElementById('screenResult').classList.add('hidden');
+        document.getElementById('screenHUD').classList.remove('hidden');
+
+        this.get('PlayerSession').resizeInventory();
         this.get('AudioSystem').startBGM('town');
-        
         const mm = this.get('MapManager');
         const townData = mm.generateTown();
         const em = this.get('EntityManager');
@@ -144,6 +147,9 @@ export class GameEngine extends BaseManager {
         const rooms = mm.generateDungeon(selectedRunPlan); 
         em.clear();
         em.player = new Player(rooms[0].cx * mm.ts, rooms[0].cy * mm.ts, this.app);
+        // 채널링 초기화
+        em.player.channeling = 0;
+        em.player.channelTarget = null;
         
         // 방별 오브젝트/적 스폰
         for (let i = 1; i < rooms.length - 1; i++) {
@@ -270,7 +276,7 @@ export class GameEngine extends BaseManager {
     executeInteraction(target) {
         const ui = this.get('UIManager');
         const em = this.get('EntityManager');
-        
+
         if (target.type === 'ITEM') {
             if (ui.get('PlayerSession').giveItem(target.obj.data)) {
                 em.items = em.items.filter(i => i !== target.obj);
@@ -278,8 +284,9 @@ export class GameEngine extends BaseManager {
             }
         } else {
             const obj = target.obj;
-            if (obj.type === 'CHEST') ui.openInventory('loot', obj);
-            else if (obj.type === 'STASH_OBJ') ui.openInventory('stash');
+            if (obj.type === 'CHEST' || obj.type === 'CORPSE' || obj.type === 'ENEMY_CORPSE') {
+                ui.openInventory('loot', obj);
+            } else if (obj.type === 'STASH_OBJ') ui.openInventory('stash');
             else if (obj.type === 'WORKBENCH_OBJ') ui.openCraftingMenu();
             else if (obj.type === 'TOWNHALL_OBJ') ui.openUpgradeMenu();
             else if (obj.type === 'EXIT' || obj.type === 'GATE_OBJ') {
@@ -288,16 +295,19 @@ export class GameEngine extends BaseManager {
             }
         }
     }
-
     render() {
         this.renderer.render(this.scene, this.camera);
     }
 
     endRun(success) {
         this.currentState = GAME_STATE.RESULT;
-        
-        document.getElementById('screenHUD').classList.add('hidden'); 
-        document.getElementById('screenResult').classList.remove('hidden'); 
+
+        // 마우스 락 해제
+        document.exitPointerLock();
+
+        document.getElementById('screenHUD').classList.add('hidden');   
+        document.getElementById('screenResult').classList.remove('hidden');
+ 
         document.getElementById('interactPrompt').classList.add('hidden');
         
         const em = this.get('EntityManager');

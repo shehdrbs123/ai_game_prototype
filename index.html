@@ -146,8 +146,12 @@
                 </div>
 
                 <div id="lootSection" class="w-full md:w-[240px] hidden flex-col border-t md:border-t-0 md:border-l border-gray-600 pt-4 md:pt-0 md:pl-4 flex-shrink-0">
-                    <h3 class="text-xs md:text-md font-bold text-yellow-500 mb-2">상자 탐색</h3>
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="text-xs md:text-md font-bold text-yellow-500">상자 탐색</h3>
+                        <button id="btnToggleAutoSearch" class="text-[10px] bg-gray-700 hover:bg-blue-600 text-white px-2 py-1 rounded transition border border-gray-500">자동 탐색 ON</button>
+                    </div>
                     <div id="lootGrid" class="grid grid-cols-3 gap-2 bg-gray-900 p-3 rounded min-h-[100px]"></div>
+
                     <p class="text-xs text-gray-400 mt-2 text-center">아이템을 가방으로 옮기세요.</p>
                 </div>
 
@@ -216,7 +220,7 @@
     </div>
 
     <!-- 일시정지 / 설정 메뉴 (ESC) -->
-    <div id="pauseMenu" class="absolute inset-0 z-[250] hidden flex items-center justify-center backdrop-blur-sm bg-black bg-opacity-60 transition-opacity duration-200">
+    <div id="pauseMenu" class="absolute inset-0 z-[250] hidden flex items-center justify-center backdrop-blur-sm bg-black bg-opacity-60 transition-opacity duration-200 pointer-events-auto">
         <div class="bg-gray-900 border border-gray-700 w-[90vw] md:w-[400px] p-8 rounded-2xl shadow-2xl text-center relative overflow-hidden">
             <!-- 장식용 배경 요소 -->
             <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-500 via-purple-500 to-red-500"></div>
@@ -323,8 +327,17 @@
             pauseMenu.classList.remove('hidden');
             // 애니메이션 효과
             pauseMenu.classList.add('animate-fade-in');
+            // 일시정지 시 포인터 락 해제
+            document.exitPointerLock();
         } else {
             pauseMenu.classList.add('hidden');
+            // 재개 시 포인터 락 재획득 (UI가 닫혀있을 때만)
+            const canvas = document.getElementById('gameCanvas');
+            // UIManager의 isAnyUIOpen을 체크하기 위해 전역 참조 사용
+            const ui = window.gameApp ? window.gameApp.get('UIManager') : null;
+            if (canvas && (!ui || !ui.isAnyUIOpen())) {
+                canvas.requestPointerLock();
+            }
         }
     }
 
@@ -347,31 +360,6 @@
     window.addEventListener('keydown', stopInputIfPaused, true);
     window.addEventListener('mousedown', stopInputIfPaused, true);
     window.addEventListener('touchstart', stopInputIfPaused, { capture: true, passive: false });
-
-    // 볼륨 조절
-    document.getElementById('volumeSlider').addEventListener('input', (e) => {
-        const player = document.getElementById('bgmPlayer');
-        if (player) {
-            const vol = e.target.value / 100;
-            // 1. 표준 volume 속성 시도
-            player.volume = vol;
-            // 2. Magenta/Tone.js 내부 객체 접근 시도 (비표준)
-            try {
-                if (player.player && player.player.output && player.player.output.gain) {
-                    player.player.output.gain.value = vol;
-                }
-            } catch (err) { /* 무시 */ }
-        }
-    });
-
-    // 버튼 이벤트 연결
-    document.getElementById('btnPauseResume').addEventListener('click', window.togglePause);
-    
-    document.getElementById('btnPauseQuit').addEventListener('click', () => {
-        if(confirm('정말 타이틀 화면으로 돌아가시겠습니까? 저장되지 않은 진행 상황은 잃게 됩니다.')) {
-            location.reload();
-        }
-    });
 
     }); // End of DOMContentLoaded
 </script>
