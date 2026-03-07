@@ -78,6 +78,14 @@ export class AudioSystem extends BaseManager {
     }
 
     /**
+     * 전체(Master) 볼륨 설정 (0.0 ~ 1.0)
+     */
+    setMasterVolume(value) {
+        if (!this.masterGain) return;
+        this.masterGain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.1);
+    }
+
+    /**
      * 배경음악 볼륨 설정 (0.0 ~ 1.0)
      */
     setBGMVolume(value) {
