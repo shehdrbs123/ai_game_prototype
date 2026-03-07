@@ -1,26 +1,46 @@
-
 import { distance } from "../utils.js";
 import { Projectile } from "./Projectile.js";
 import { Interactable } from "./Interactable.js";
 import { Animator } from "../core/Animator.js";
 import { createEnemyAnimatorController } from "../data/animatorData.js";
 
+/**
+ * Enemy: 적 캐릭터 엔티티. 플레이어 추적 및 공격을 담당합니다.
+ */
 export class Enemy {
-    constructor(x, y, isRanged, c) {
-        this.c = c;
-        this.x = x; this.y = y; this.isRanged = isRanged; this.radius = 14;
-        this.maxHp = isRanged ? 40 : 60; this.hp = this.maxHp;
-        this.speed = isRanged ? 70 : 120; this.aggroRange = 350; this.attackRange = isRanged ? 250 : 30;
-        this.attackCooldown = 0; this.state = 'IDLE'; this.stepTimer = Math.random() * 0.4; 
+    /**
+     * @param {number} x 
+     * @param {number} y 
+     * @param {boolean} isRanged 
+     * @param {DIContainer} app 
+     */
+    constructor(x, y, isRanged, app) {
+        this.app = app;
+        this.x = x; 
+        this.y = y; 
+        this.isRanged = isRanged; 
+        this.radius = 14;
         
-        // Animator Setup
+        // 스탯 설정
+        this.maxHp = isRanged ? 40 : 60; 
+        this.hp = this.maxHp;
+        this.speed = isRanged ? 80 : 130; 
+        this.aggroRange = 400; 
+        this.attackRange = isRanged ? 250 : 40;
+        this.attackCooldown = 0; 
+        
+        this.state = 'IDLE'; 
+        this.stepTimer = Math.random() * 0.4; 
+        
+        // 애니메이터 설정
         this.animator = new Animator(createEnemyAnimatorController());
 
-        // 3D Mesh Setup
+        // 3D 메쉬 설정
         this.init3D();
     }
 
     init3D() {
+        const THREE = window.THREE;
         this.mesh = new THREE.Group();
         
         const bodyGeo = new THREE.BoxGeometry(this.radius * 2, this.radius * 2, this.radius * 2);
@@ -36,112 +56,117 @@ export class Enemy {
 
     update(dt) {
         if (this.attackCooldown > 0) this.attackCooldown -= dt;
-        let p = this.c.get('EntityManager').player;
+        
+        const em = this.app.get('EntityManager');
+        const p = em.player;
         if (!p) return;
-        let dist = distance(this.x, this.y, p.x, p.y);
-        this.state = dist < this.aggroRange ? 'CHASE' : 'IDLE';
+
+        const dist = distance(this.x, this.y, p.x, p.y);
+        
+        // 상태 전이
+        if (dist < this.aggroRange) {
+            this.state = 'CHASE';
+        } else {
+            this.state = 'IDLE';
+        }
         
         let currentSpeed = 0;
         if (this.state === 'CHASE') {
-            let vol = Math.max(0, 1 - (dist / 400)); 
+            const vol = Math.max(0, 1 - (dist / 500)); 
+            
             if (dist > this.attackRange) {
+                // 추적
                 currentSpeed = 1.0;
-                let angle = Math.atan2(p.y - this.y, p.x - this.x);
-                let moveX = Math.cos(angle) * this.speed * dt, moveY = Math.sin(angle) * this.speed * dt;
-                let mm = this.c.get('MapManager');
+                const angle = Math.atan2(p.y - this.y, p.x - this.x);
+                const moveX = Math.cos(angle) * this.speed * dt;
+                const moveY = Math.sin(angle) * this.speed * dt;
+                
+                const mm = this.app.get('MapManager');
                 if (!mm.checkWall(this.x + moveX, this.y, this.radius)) this.x += moveX;
                 if (!mm.checkWall(this.x, this.y + moveY, this.radius)) this.y += moveY;
                 
+                // 발소리 (플레이어와의 거리에 비례한 볼륨)
                 this.stepTimer += dt;
                 if (this.stepTimer > 0.4) {
-                    if (vol > 0) this.c.get('AudioSystem').play('step', vol * 0.6);
+                    if (vol > 0.1) this.app.get('AudioSystem').play('step', vol * 0.4);
                     this.stepTimer = 0;
                 }
             } else {
+                // 공격
                 currentSpeed = 0;
-                this.stepTimer = 0.4;
                 if (this.attackCooldown <= 0) {
-                    this.animator.setTrigger('isAttacking');
-                    if (this.isRanged) { 
-                        this.attackCooldown = 2.0; this.c.get('AudioSystem').play('enemy_ranged', vol); 
-                        const em = this.c.get('EntityManager');
-                        em.addEntity(em.projectiles, new Projectile(this.x, this.y, Math.atan2(p.y - this.y, p.x - this.x), 200, 15, false, this.c)); 
-                    } else { 
-                        this.attackCooldown = 1.0; this.c.get('AudioSystem').play('enemy_melee', vol); p.takeDamage(15); 
-                    }
+                    this.executeAttack(p, vol);
                 }
             }
-        } else {
-            currentSpeed = 0;
         }
 
         this.animator.setFloat('speed', currentSpeed);
         this.animator.update(dt);
 
-        // Sync 3D Mesh
+        // 3D 메쉬 동기화
         if (this.mesh) {
             this.mesh.position.set(this.x, 0, this.y);
-            
-            // Look at player
-            const angle = Math.atan2(p.x - this.x, p.y - this.y);
-            this.mesh.rotation.y = angle;
+            // 플레이어 바라보기
+            const lookAngle = Math.atan2(p.x - this.x, p.y - this.y);
+            this.mesh.rotation.y = lookAngle;
 
-            // Procedural Animation
-            let currentState = this.animator.currentState.name;
-            if (currentState === 'Move') {
-                this.bodyMesh.position.y = this.radius + Math.abs(Math.sin(this.animator.timeInState * 10)) * 5;
-            } else if (currentState === 'Attack') {
-                this.bodyMesh.scale.set(1.2, 1.2, 1.2);
+            // 간단한 애니메이션 효과
+            if (currentSpeed > 0) {
+                this.bodyMesh.position.y = this.radius + Math.abs(Math.sin(Date.now() * 0.01)) * 4;
             } else {
                 this.bodyMesh.position.y = this.radius;
-                this.bodyMesh.scale.set(1, 1, 1);
             }
         }
     }
+
+    executeAttack(player, vol) {
+        this.animator.setTrigger('isAttacking');
+        const audio = this.app.get('AudioSystem');
+        const em = this.app.get('EntityManager');
+
+        if (this.isRanged) { 
+            this.attackCooldown = 2.0; 
+            if (audio) audio.play('enemy_ranged', vol); 
+            const angle = Math.atan2(player.y - this.y, player.x - this.x);
+            em.addEntity(em.projectiles, new Projectile(this.x, this.y, angle, 250, 15, false, this.app)); 
+        } else { 
+            this.attackCooldown = 1.2; 
+            if (audio) audio.play('hit', vol); 
+            player.takeDamage(15); 
+        }
+    }
+
     takeDamage(amt) {
-        this.c.get('AudioSystem').play('hit');
-        this.hp -= amt; this.state = 'CHASE';
+        const audio = this.app.get('AudioSystem');
+        if (audio) audio.play('hit');
+        
+        this.hp -= amt; 
+        this.state = 'CHASE'; // 공격받으면 즉시 추적
+
         if (this.hp <= 0) {
-            this.animator.setBool('isDead', true);
-            if (Math.random() < 0.6) {
-                const id = this.c.get('DataManager').getRandomDrop();
-                if (!id) return;
-                const itemData = this.c.get('DataManager').getItem(id);
+            this.die();
+        }
+    }
+
+    die() {
+        this.animator.setBool('isDead', true);
+        const data = this.app.get('DataManager');
+        const em = this.app.get('EntityManager');
+
+        // 일정 확률로 전리품 생성
+        if (Math.random() < 0.7) {
+            const itemId = data.getRandomDrop();
+            const itemData = data.getItem(itemId);
+            
+            if (itemData) {
                 const loot = new Array(6).fill(null);
                 loot[0] = { data: itemData, revealed: false, progress: 0 };
-                const corpse = new Interactable(this.x, this.y, 'ENEMY_CORPSE', { items: loot, isOpened: false }, this.c);
-                const em = this.c.get('EntityManager');
+                
+                const corpse = new Interactable(this.x, this.y, 'ENEMY_CORPSE', { items: loot, isOpened: false }, this.app);
                 em.addEntity(em.interactables, corpse);
             }
         }
-    }
-    draw(ctx) {
-        let currentState = this.animator.currentState.name;
-        let visualScale = 1.0;
-        let visualY = this.y;
-
-        if (currentState === 'Attack') {
-            // Squish and stretch during attack
-            visualScale = 1.2;
-        } else if (currentState === 'Move') {
-            visualY -= Math.abs(Math.sin(this.animator.timeInState * 10)) * 3;
-        }
-
-        ctx.save();
-        ctx.translate(this.x, visualY);
-        ctx.scale(visualScale, visualScale);
-
-        ctx.beginPath(); 
-        ctx.arc(0, 0, this.radius, 0, Math.PI * 2); 
-        ctx.fillStyle = this.isRanged ? '#9333ea' : '#ef4444'; 
-        ctx.fill(); 
-        ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.stroke();
         
-        ctx.restore();
-
-        if (this.hp < this.maxHp) { 
-            ctx.fillStyle = 'black'; ctx.fillRect(this.x - 15, this.y - 25, 30, 4); 
-            ctx.fillStyle = 'red'; ctx.fillRect(this.x - 15, this.y - 25, 30 * (this.hp / this.maxHp), 4); 
-        }
+        // EntityManager.update()에서 리스트로부터 제거될 예정
     }
 }

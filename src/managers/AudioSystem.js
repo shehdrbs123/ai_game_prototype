@@ -1,160 +1,197 @@
-export class AudioSystem {
-    constructor() {
+import { BaseManager } from '../core/BaseManager.js';
+
+/**
+ * AudioSystem: 오디오 컨텍스트 관리, BGM/SFX 채널 믹싱, 사운드 이펙트 재생을 담당합니다.
+ * C# Porting: Unity의 AudioMixer, AudioSource, AudioClip 시스템으로 대응됩니다.
+ */
+export class AudioSystem extends BaseManager {
+    /**
+     * @param {DIContainer} app 
+     */
+    constructor(app) {
+        super(app);
+        
+        /** @private @type {AudioContext} */
         this.ctx = null;
-        this.compressor = null;
+        
+        // --- Audio Graph Nodes (Unity AudioMixer와 유사한 구조) ---
+        /** @private @type {DynamicsCompressorNode} 리미터 역할 */
+        this.limiter = null;
+        /** @private @type {GainNode} 전체 볼륨 */
         this.masterGain = null;
+        /** @private @type {GainNode} 배경음 볼륨 */
+        this.bgmGain = null;
+        /** @private @type {GainNode} 효과음 볼륨 */
+        this.sfxGain = null;
+        
+        /** @private @type {HTMLElement} MIDI 플레이어 참조 */
         this.midiPlayer = null;
+        
+        /** @private @type {string|null} 현재 재생 중인 BGM 이름 */
         this.currentBGM = null;
     }
 
+    /**
+     * 시스템 초기화
+     */
     init() {
         if (this.ctx) return;
+        
         const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContext) return;
+        if (!AudioContext) {
+            console.error('AudioSystem: Web Audio API not supported.');
+            return;
+        }
+
         this.ctx = new AudioContext();
         
-        this.compressor = this.ctx.createDynamicsCompressor();
-        this.compressor.threshold.value = -15;
-        this.compressor.knee.value = 10;
-        this.compressor.ratio.value = 12;
-        this.compressor.attack.value = 0.01;
-        this.compressor.release.value = 0.25;
+        // 1. Limiter (DynamicsCompressorNode): 피크 클리핑 방지
+        this.limiter = this.ctx.createDynamicsCompressor();
+        this.limiter.threshold.setValueAtTime(-12, this.ctx.currentTime);
+        this.limiter.knee.setValueAtTime(30, this.ctx.currentTime);
+        this.limiter.ratio.setValueAtTime(12, this.ctx.currentTime);
+        this.limiter.attack.setValueAtTime(0.003, this.ctx.currentTime);
+        this.limiter.release.setValueAtTime(0.25, this.ctx.currentTime);
         
+        // 2. Master Gain
         this.masterGain = this.ctx.createGain();
-        this.masterGain.gain.value = 0.7; 
+        this.masterGain.gain.value = 0.8;
         
-        this.compressor.connect(this.masterGain);
-        this.masterGain.connect(this.ctx.destination);
+        // 3. Category Gains (Channels)
+        this.bgmGain = this.ctx.createGain();
+        this.bgmGain.gain.value = 0.4;
         
-        // MIDI 플레이어는 HTML 엘리먼트이므로 Web Audio 노드에 직접 .connect() 할 수 없습니다.
-        // 대신 이 참조를 통해 재생/정지 및 볼륨 속성을 제어합니다.
+        this.sfxGain = this.ctx.createGain();
+        this.sfxGain.gain.value = 0.7;
+        
+        // 연결 구조: [Source] -> (BGM/SFX Gain) -> Master Gain -> Limiter -> Destination
+        this.bgmGain.connect(this.masterGain);
+        this.sfxGain.connect(this.masterGain);
+        this.masterGain.connect(this.limiter);
+        this.limiter.connect(this.ctx.destination);
+        
+        // MIDI 플레이어 참조
         this.midiPlayer = document.getElementById('bgmPlayer');
+        
+        this.initialized = true;
+        console.log('AudioSystem initialized with Master/BGM/SFX channels.');
     }
 
+    /**
+     * 배경음악 볼륨 설정 (0.0 ~ 1.0)
+     */
+    setBGMVolume(value) {
+        if (!this.bgmGain) return;
+        this.bgmGain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.1);
+    }
+
+    /**
+     * 효과음 볼륨 설정 (0.0 ~ 1.0)
+     */
+    setSFXVolume(value) {
+        if (!this.sfxGain) return;
+        this.sfxGain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.1);
+    }
+
+    /**
+     * 효과음(SFX)을 재생합니다.
+     * C# Porting: AudioSource.PlayOneShot(clip)으로 대응됩니다.
+     * @param {string} type 사운드 타입 (ui, sword, hit 등)
+     * @param {number} vol 개별 볼륨 배율
+     */
     play(type, vol = 1) {
-        if (!this.ctx) this.init(); if (!this.ctx) return;
+        if (!this.initialized) this.init();
+        if (!this.ctx) return;
         if (this.ctx.state === 'suspended') this.ctx.resume();
         
         let osc = this.ctx.createOscillator();
         let gain = this.ctx.createGain();
         let t = this.ctx.currentTime;
         
+        // 효과음 채널(sfxGain)에 연결
+        gain.connect(this.sfxGain);
+        
         switch(type) {
             case 'ui':
                 osc.type = 'sine'; osc.frequency.setValueAtTime(600, t);
-                gain.gain.setValueAtTime(0.05 * vol, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
-                osc.connect(gain); gain.connect(this.compressor); osc.start(t); osc.stop(t + 0.1); break;
-            case 'pick':
-                osc.type = 'sine'; osc.frequency.setValueAtTime(400, t); osc.frequency.linearRampToValueAtTime(800, t + 0.1);
-                gain.gain.setValueAtTime(0.05 * vol, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
-                osc.connect(gain); gain.connect(this.compressor); osc.start(t); osc.stop(t + 0.1); break;
-            case 'drop':
-                osc.type = 'triangle'; osc.frequency.setValueAtTime(400, t); osc.frequency.linearRampToValueAtTime(200, t + 0.1);
-                gain.gain.setValueAtTime(0.05 * vol, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
-                osc.connect(gain); gain.connect(this.compressor); osc.start(t); osc.stop(t + 0.1); break;
-            case 'inv_move':
-                osc.type = 'sine'; osc.frequency.setValueAtTime(300, t); osc.frequency.exponentialRampToValueAtTime(100, t + 0.05);
-                gain.gain.setValueAtTime(0.08 * vol, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.05);
-                osc.connect(gain); gain.connect(this.compressor); osc.start(t); osc.stop(t + 0.05); break;
-            case 'equip':
-                osc.type = 'triangle'; osc.frequency.setValueAtTime(600, t); osc.frequency.exponentialRampToValueAtTime(150, t + 0.1);
-                gain.gain.setValueAtTime(0.15 * vol, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
-                osc.connect(gain); gain.connect(this.compressor); osc.start(t); osc.stop(t + 0.1); break;
-            case 'sword':
-                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, t); osc.frequency.exponentialRampToValueAtTime(40, t + 0.2);
-                gain.gain.setValueAtTime(0.05 * vol, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
-                osc.connect(gain); gain.connect(this.compressor); osc.start(t); osc.stop(t + 0.2); break;
-            case 'spear':
-                osc.type = 'triangle'; osc.frequency.setValueAtTime(300, t); osc.frequency.exponentialRampToValueAtTime(100, t + 0.15);
-                gain.gain.setValueAtTime(0.05 * vol, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
-                osc.connect(gain); gain.connect(this.compressor); osc.start(t); osc.stop(t + 0.15); break;
-            case 'bow':
-                osc.type = 'sine'; osc.frequency.setValueAtTime(800, t); osc.frequency.exponentialRampToValueAtTime(200, t + 0.15);
-                gain.gain.setValueAtTime(0.05 * vol, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
-                osc.connect(gain); gain.connect(this.compressor); osc.start(t); osc.stop(t + 0.15); break;
-            case 'enemy_melee':
-                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, t); osc.frequency.exponentialRampToValueAtTime(50, t + 0.15);
-                gain.gain.setValueAtTime(0.06 * vol, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
-                osc.connect(gain); gain.connect(this.compressor); osc.start(t); osc.stop(t + 0.15); break;
-            case 'enemy_ranged':
-                osc.type = 'square'; osc.frequency.setValueAtTime(400, t); osc.frequency.exponentialRampToValueAtTime(100, t + 0.2);
-                gain.gain.setValueAtTime(0.03 * vol, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
-                osc.connect(gain); gain.connect(this.compressor); osc.start(t); osc.stop(t + 0.2); break;
+                gain.gain.setValueAtTime(0.1 * vol, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+                osc.connect(gain); osc.start(t); osc.stop(t + 0.1); break;
             case 'hit':
                 osc.type = 'square'; osc.frequency.setValueAtTime(100, t); osc.frequency.exponentialRampToValueAtTime(20, t + 0.1);
-                gain.gain.setValueAtTime(0.1 * vol, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
-                osc.connect(gain); gain.connect(this.compressor); osc.start(t); osc.stop(t + 0.1); break;
-            case 'loot':
-                let bSize = this.ctx.sampleRate * 0.15; let noiseBuf = this.ctx.createBuffer(1, bSize, this.ctx.sampleRate);
-                let out = noiseBuf.getChannelData(0); for(let i = 0; i < bSize; i++) out[i] = (Math.random() * 2 - 1) * 0.7;
-                let noiseSource = this.ctx.createBufferSource(); noiseSource.buffer = noiseBuf;
-                let bandpass = this.ctx.createBiquadFilter(); bandpass.type = 'lowpass'; bandpass.frequency.value = 300; 
-                noiseSource.connect(bandpass); bandpass.connect(gain); gain.connect(this.compressor);
-                gain.gain.setValueAtTime(0.5 * vol, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
-                noiseSource.start(t); break;
-            case 'success':
-                osc.type = 'triangle'; osc.frequency.setValueAtTime(440, t); osc.frequency.setValueAtTime(554, t + 0.1);
-                osc.frequency.setValueAtTime(659, t + 0.2); osc.frequency.setValueAtTime(880, t + 0.3);
-                gain.gain.setValueAtTime(0.1 * vol, t); gain.gain.linearRampToValueAtTime(0.1, t + 0.3); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.8);
-                osc.connect(gain); gain.connect(this.compressor); osc.start(t); osc.stop(t + 0.8); break;
-            case 'fail':
-                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, t); osc.frequency.linearRampToValueAtTime(50, t + 0.5);
-                gain.gain.setValueAtTime(0.1 * vol, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
-                osc.connect(gain); gain.connect(this.compressor); osc.start(t); osc.stop(t + 0.5); break;
+                gain.gain.setValueAtTime(0.2 * vol, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+                osc.connect(gain); osc.start(t); osc.stop(t + 0.1); break;
+            case 'sword':
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, t); osc.frequency.exponentialRampToValueAtTime(40, t + 0.2);
+                gain.gain.setValueAtTime(0.15 * vol, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
+                osc.connect(gain); osc.start(t); osc.stop(t + 0.2); break;
+            case 'step':
+                // 발소리: 낮은 주파수의 삼각형파 + 아주 짧은 노이즈 버스트 조합 (타격감 개선)
+                osc.type = 'triangle'; 
+                osc.frequency.setValueAtTime(60, t); 
+                osc.frequency.exponentialRampToValueAtTime(10, t + 0.1);
+                gain.gain.setValueAtTime(0.1 * vol, t); 
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+                
+                // 짧은 노이즈 추가 (바닥 닿는 소리)
+                const stepBuf = this.ctx.createBuffer(1, this.ctx.sampleRate * 0.02, this.ctx.sampleRate);
+                const stepOut = stepBuf.getChannelData(0);
+                for(let i = 0; i < stepOut.length; i++) stepOut[i] = Math.random() * 2 - 1;
+                const stepNoise = this.ctx.createBufferSource();
+                stepNoise.buffer = stepBuf;
+                const stepNGain = this.ctx.createGain();
+                stepNGain.gain.setValueAtTime(0.03 * vol, t);
+                stepNGain.gain.exponentialRampToValueAtTime(0.001, t + 0.02);
+                stepNoise.connect(stepNGain); stepNGain.connect(this.sfxGain);
+                stepNoise.start(t);
+
+                osc.connect(gain); osc.start(t); osc.stop(t + 0.1); break;
             case 'dash':
                 osc.type = 'sine'; osc.frequency.setValueAtTime(800, t); osc.frequency.exponentialRampToValueAtTime(100, t + 0.25);
                 gain.gain.setValueAtTime(0.1 * vol, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
-                osc.connect(gain); gain.connect(this.compressor); osc.start(t); osc.stop(t + 0.25); break;
-            case 'step':
-                osc.type = 'sine'; osc.frequency.setValueAtTime(100, t); osc.frequency.exponentialRampToValueAtTime(10, t + 0.05);
-                gain.gain.setValueAtTime(0.15 * vol, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
-                osc.connect(gain); gain.connect(this.compressor); osc.start(t); osc.stop(t + 0.05); break;
+                osc.connect(gain); osc.start(t); osc.stop(t + 0.25); break;
+            // ... (추가 사운드 타입은 필요 시 확장)
+            default:
+                // 기본 효과음
+                osc.type = 'sine'; osc.frequency.setValueAtTime(440, t);
+                gain.gain.setValueAtTime(0.05 * vol, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+                osc.connect(gain); osc.start(t); osc.stop(t + 0.1);
         }
     }
 
+    /**
+     * 배경음악(BGM)을 시작합니다.
+     * @param {string} type 
+     */
     async startBGM(type = 'dungeon') {
-        if (!this.initIfNeeded()) return;
-        // 플레이어 내부 객체(player)가 로드되었는지 확인하는 안전장치 추가
-        // html-midi-player의 내부 구조에 따라 player 속성이 없을 수 있으므로 옵셔널 체이닝 사용
-        if (this.currentBGM === type && this.midiPlayer?.player && !this.midiPlayer.player.ended) {
-            return;
-        }
+        if (!this.initialized) this.init();
+        if (!this.ctx || !this.midiPlayer) return;
+
+        if (this.currentBGM === type) return;
         this.currentBGM = type;
         
-        // For now, we only have one BGM track. We can map 'type' to different track IDs later.
-        const trackId = 'bgm';
-
+        const trackId = 'bgm'; // 추후 기획에 따라 맵핑
         try {
-            console.log(`Fetching token for MIDI track: ${trackId}`);
             const response = await fetch(`/midi/token/${trackId}`);
-            if (!response.ok) {
-                throw new Error(`Failed to get MIDI token: ${response.statusText}`);
-            }
+            if (!response.ok) throw new Error(`MIDI token fail: ${response.statusText}`);
             const { token } = await response.json();
-            console.log('Token received, setting player source.');
-            
             const midiUrl = `/midi/asset/${trackId}?token=${encodeURIComponent(token)}`;
             
-            if (this.midiPlayer) {
-                // Custom Element가 브라우저에 등록될 때까지 대기
-                if (window.customElements && customElements.whenDefined) {
-                    await customElements.whenDefined('midi-player');
-                }
-
-                this.midiPlayer.src = midiUrl;
-                
-                // 내부 라이브러리가 로드되고 urlToNoteSequence가 준비될 때까지 대기 시간을 늘림
-                await new Promise(resolve => setTimeout(resolve, 1500));
-                
-                // 플레이어 내부 상태가 'loading'이 아닐 때만 start 호출
-                if (typeof this.midiPlayer.start === 'function' && this.midiPlayer.player) {
-                    await this.midiPlayer.start();
-                }
+            if (window.customElements && customElements.whenDefined) {
+                await customElements.whenDefined('midi-player');
             }
-            console.log('MIDI BGM started.');
-
+            
+            this.midiPlayer.src = midiUrl;
+            
+            // 로딩 대기 후 재생
+            setTimeout(() => {
+                if (typeof this.midiPlayer.start === 'function') {
+                    this.midiPlayer.start();
+                }
+            }, 1000);
+            
+            console.log(`AudioSystem: BGM '${type}' started.`);
         } catch (error) {
-            console.error('Could not start BGM:', error);
+            console.error('AudioSystem: BGM failed:', error);
             this.currentBGM = null;
         }
     }
@@ -163,23 +200,13 @@ export class AudioSystem {
         this.currentBGM = null;
         if (this.midiPlayer) {
             this.midiPlayer.stop();
-            console.log('MIDI BGM stopped.');
         }
     }
 
-    initIfNeeded() {
-        if (!this.ctx) this.init();
-        if (!this.ctx) {
-            console.warn("AudioContext could not be initialized.");
-            return false;
+    destroy() {
+        if (this.ctx) {
+            this.ctx.close();
         }
-        if (this.ctx.state === 'suspended') {
-            this.ctx.resume();
-        }
-        if (!this.midiPlayer) {
-            console.error("Midi player not found!");
-            return false;
-        }
-        return true;
+        super.destroy();
     }
 }

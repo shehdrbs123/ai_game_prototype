@@ -17,6 +17,7 @@ export class UpgradeView {
 
     show() { this.window.classList.remove('hidden'); }
     hide() { this.window.classList.add('hidden'); }
+    isOpen() { return !this.window.classList.contains('hidden'); }
 
     render(stats, costs, currentVal, currentMat) {
         if (!this.window) return;

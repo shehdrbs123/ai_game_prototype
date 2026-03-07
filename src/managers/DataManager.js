@@ -1,8 +1,9 @@
-
+import { BaseManager } from '../core/BaseManager.js';
 import { RAW_DATA } from '../data/gameData.js';
 
-export class DataManager {
-    constructor() {
+export class DataManager extends BaseManager {
+    constructor(app) {
+        super(app);
         this.items = new Map();
         this.recipes = [];
         this.settings = RAW_DATA.settings;

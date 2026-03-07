@@ -66,7 +66,22 @@
 
 ---
 
-## 5. 데이터 관리 (`DataManager` & `gameData.js`)
+---
 
-`DataManager`는 `src/data/gameData.js`에 정의된 `RAW_DATA`를 읽어와 게임 내에서 쉽게 접근할 수 있도록 가공합니다.
-새로운 아이템이나 제작법을 추가하고 싶다면, 코드를 수정할 필요 없이 `gameData.js`의 배열에 데이터만 추가하면 즉시 게임에 반영됩니다.
+## 6. Unity/C# 이식 가이드 (Porting Guide)
+
+본 아키텍처는 향후 Unity(C#) 환경으로의 원활한 이식을 고려하여 설계되었습니다. 주요 컴포넌트의 대응 관계는 다음과 같습니다.
+
+| Web/JS Component | Unity/C# Equivalent | 이식 시 주의사항 |
+| :--- | :--- | :--- |
+| `DIContainer` | `Zenject` / `Extenject` / `Service Locator` | 인터페이스 기반 바인딩 추천 |
+| `BaseManager` | `MonoBehaviour` 또는 `ScriptableObject` | `init()` -> `Awake`/`Start` 대응 |
+| `EventBus` | `UnityEvent`, `Action`, `delegate` | 형식 안정성(Type-safe) 이벤트 정의 |
+| `DataManager` | `JSON Serialization` + `ScriptableObject` | `gameData.js`를 JSON/C# Class로 변환 |
+| `GameEngine` | `GameManager` (Singleton or DI) | `loop()` -> `Update()` / `FixedUpdate()` |
+| `EntityManager` | `Object Pooling` + `Factory Pattern` | Unity의 `Instantiate`/`Destroy` 최적화 |
+
+**이식성 확보를 위한 코딩 규칙:**
+- 클래스 멤버 변수와 메소드에 대한 명확한 접근 제어자(Public/Private)를 주석으로 명시.
+- 동적 타입(`any`) 사용을 지양하고, 가능한 정형화된 객체 구조 유지.
+- 비동기 로직(`Promise`, `async/await`)은 Unity의 `Coroutine` 또는 `UniTask`로 변환하기 쉬운 구조로 작성.

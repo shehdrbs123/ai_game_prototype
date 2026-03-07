@@ -39,6 +39,17 @@ This project is a 2D top-down extraction action game prototype built with plain 
 
 ## 📜 Development Conventions
 
+### 🛠️ Unity/C# Migration Readiness (Core Mandate)
+본 프로젝트의 모든 JavaScript 코드는 향후 **Unity(C#) 환경으로의 이식**을 전제로 작성됩니다. 따라서 아래의 원칙을 반드시 준수해야 합니다.
+
+1.  **클래스 기반 구조:** JavaScript의 프로토타입 기반 핵(Hack)을 지양하고, C# 클래스와 유사한 구조(`class`, `constructor`, `static`)를 유지합니다.
+2.  **명시적 인터페이스 지향:** `BaseManager`를 통한 생명주기(`init`, `update`, `destroy`) 관리를 철저히 하여 Unity의 `MonoBehaviour` 또는 `ScriptableObject` 생명주기와 대응시킵니다.
+3.  **데이터와 로직의 분리:** C#의 `Serializable` 데이터 구조(POCO)로 변환하기 쉽도록 JSON 및 데이터 객체를 정형화합니다.
+4.  **느슨한 결합 (Decoupling):** Unity의 `EventSystem` 또는 `Action/Delegate`로 대체 가능한 `EventBus` 패턴을 적극 활용합니다.
+5.  **DI(의존성 주입):** Unity의 `Zenject` 또는 `Service Locator` 패턴으로 전환하기 쉽도록 `DIContainer`를 통한 참조 관리를 고수합니다.
+
+---
+
 *   **Manager Pattern:** When adding new global systems, create a Manager class and register it in `src/main.js` via the `DIContainer`.
 *   **Dependency Access:** Prefer getting dependencies from the `DIContainer` rather than global variables.
 *   **Data Separation:** Keep item definitions, recipes, and balance constants in `src/data/gameData.js`.

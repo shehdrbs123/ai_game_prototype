@@ -10,6 +10,10 @@
     <script src="https://cdn.jsdelivr.net/combine/npm/tone@14.7.58,npm/@magenta/music@1.23.1/es6/core.js,npm/html-midi-player@1.5.0"></script>
     <!-- Three.js: 3D Rendering Engine -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+    <!-- FBXLoader and its dependency fflate -->
+    <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.0/lib/browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/FBXLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/utils/SkeletonUtils.js"></script>
 </head>
 <body>
 
@@ -262,7 +266,7 @@
     </div>
 </div>
 
-<midi-player id="bgmPlayer" sound-font loop></midi-player>
+<midi-player id="bgmPlayer" sound-font loop class="hidden" style="display: none;"></midi-player>
 
 <!-- 게임 시작 및 UI 스크립트 -->
 <!-- 시작 화면 (브라우저 오디오 정책 대응 및 게임 시작) -->

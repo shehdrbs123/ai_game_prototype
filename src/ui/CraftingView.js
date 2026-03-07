@@ -18,11 +18,12 @@ export class CraftingView {
 
     show() { this.window.classList.remove('hidden'); }
     hide() { this.window.classList.add('hidden'); }
+    isOpen() { return !this.window.classList.contains('hidden'); }
 
     renderRecipeList(recipes, onSelect) {
         this.listEl.innerHTML = '';
         recipes.forEach((recipe, idx) => {
-            const item = this.ui.container.get('DataManager').getItem(recipe.targetId);
+            const item = this.ui.get('DataManager').getItem(recipe.targetId);
             const li = document.createElement('li');
             li.className = "recipe-item p-2 md:p-3 bg-gray-800 rounded border border-gray-700 cursor-pointer hover:bg-gray-700 transition flex items-center gap-3";
             li.innerHTML = `<span class="text-xl md:text-2xl">${item.emoji}</span> <div><div class="text-sm md:text-base font-bold text-white">${item.name}</div></div>`;

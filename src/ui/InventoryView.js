@@ -20,6 +20,7 @@ export class InventoryView {
 
     show() { this.window.classList.remove('hidden'); }
     hide() { this.window.classList.add('hidden'); }
+    isOpen() { return !this.window.classList.contains('hidden'); }
 
     setMode(mode) {
         this.stashSection.classList.add('hidden');
