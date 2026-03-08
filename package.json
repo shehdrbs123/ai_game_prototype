@@ -5,6 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "start:game": "node server.js",
+    "start:editor": "node Editor/server.js",
     "commit:fmt": "powershell -ExecutionPolicy Bypass -File ./scripts/commit-template.ps1"
   },
   "dependencies": {

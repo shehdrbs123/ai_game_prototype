@@ -1,0 +1,8 @@
+{
+    "tileSize": 64,
+    "mapCols": 50,
+    "mapRows": 50,
+    "baseHp": 100,
+    "baseSp": 100,
+    "baseSpRegen": 20
+}

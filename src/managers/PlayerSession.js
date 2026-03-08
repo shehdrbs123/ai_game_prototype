@@ -1,202 +1,117 @@
 import { BaseManager } from '../core/BaseManager.js';
 
 /**
- * PlayerSession: 플레이어의 영구적 성장(Meta)과 현재 탐험 상태(Run) 데이터를 관리합니다.
- * C# Porting: Unity의 ScriptableObject(Data Container) 또는 SaveSystem으로 대응됩니다.
+ * 플레이어의 현재 세션 상태(골드, 인벤토리, 장비, 진행도 등)를 관리합니다.
  */
 export class PlayerSession extends BaseManager {
-    /**
-     * @param {DIContainer} app 
-     */
     constructor(app) {
         super(app);
+        this.gold = 1000;
+        this.inventory = [];
+        this.equipment = { weapon: null, head: null, body: null, legs: null };
+        this.stats = { level: 1, exp: 0, hp: 100, maxHp: 100, atk: 10, def: 0 };
+        this.dungeonHistory = [];
         
-        // 영구 성장 데이터 (Persistent Data)
-        this.meta = {
-            valuables: 0, 
-            materials: 0,
-            upgrades: { warehouse: 1, workbench: 1 },
-            lastDeathCorpse: null, 
-            receivedFreeWeapon: false,
-            stash: new Array(500).fill(null)
-        };
-        
-        // 현재 세션 데이터 (Run-time Data)
-        this.run = this.getEmptyRunData();
+        // 에디터/시스템용 활성 데이터
+        this.activeDungeonPlan = null;
     }
 
     init() {
+        console.log("PlayerSession: Initializing...");
         super.init();
-        console.log('PlayerSession initialized.');
     }
 
-    /**
-     * 초기 탐험 데이터 생성
-     */
-    getEmptyRunData() {
-        // 창고 업그레이드에 따른 슬롯 수 계산
-        const warehouseLevel = this.meta ? this.meta.upgrades.warehouse : 1;
-        const maxSlots = Math.min(20, 6 + (warehouseLevel - 1) * 4);
-        
-        return {
-            inventory: new Array(maxSlots).fill(null),
-            quickSlots: new Array(8).fill(null),
-            equipment: { weapon: null, head: null, chest: null, legs: null, boots: null },
-            maxSlots: maxSlots
-        };
+    // --- 인벤토리 & 경제 시스템 ---
+
+    addGold(amount) {
+        this.gold += amount;
+        this.events.emit('GOLD_CHANGED', this.gold);
     }
 
-    /**
-     * 인벤토리 크기 재계산 (업그레이드 시 호출)
-     */
-    resizeInventory() {
-        const newMax = Math.min(20, 6 + (this.meta.upgrades.warehouse - 1) * 4);
-        if (newMax > this.run.inventory.length) {
-            const diff = newMax - this.run.inventory.length;
-            for (let i = 0; i < diff; i++) this.run.inventory.push(null);
+    addItem(itemId, amount = 1) {
+        const itemData = this.get('DataManager').getItem(itemId);
+        if (!itemData) return false;
+
+        const existing = this.inventory.find(i => i.id === itemId);
+        if (existing) {
+            existing.amount += amount;
+        } else {
+            this.inventory.push({ id: itemId, amount });
         }
-        this.run.maxSlots = this.run.inventory.length;
-        
-        this.events.emit('PLAYER_INVENTORY_RESIZED', { maxSlots: this.run.maxSlots });
+        this.events.emit('INVENTORY_CHANGED', this.inventory);
+        return true;
     }
 
-    /**
-     * 특정 아이템의 전체 개수(인벤토리 + 창고)를 반환합니다.
-     */
-    getTotalItemCount(itemId) {
-        let count = 0;
-        const check = (item) => { if (item && item.id === itemId) count++; };
-        this.run.inventory.forEach(check);
-        this.meta.stash.forEach(check);
-        return count;
+    removeItem(itemId, amount = 1) {
+        const index = this.inventory.findIndex(i => i.id === itemId);
+        if (index === -1) return false;
+
+        if (this.inventory[index].amount > amount) {
+            this.inventory[index].amount -= amount;
+        } else {
+            this.inventory.splice(index, 1);
+        }
+        this.events.emit('INVENTORY_CHANGED', this.inventory);
+        return true;
     }
 
-    /**
-     * 아이템을 특정 수량만큼 소모합니다. (제작 등)
-     */
-    consumeItems(itemId, qty) {
-        let remaining = qty;
+    hasItem(itemId, amount = 1) {
+        const item = this.inventory.find(i => i.id === itemId);
+        return item && item.amount >= amount;
+    }
+
+    // --- 장비 시스템 ---
+
+    equip(itemId) {
+        const item = this.get('DataManager').getItem(itemId);
+        if (!item || item.type !== 'equipment') return false;
+
+        const slot = item.slot;
+        if (this.equipment[slot]) {
+            this.addItem(this.equipment[slot]); // 기존 장비 해제
+        }
         
-        // 1. 인벤토리에서 소모
-        for (let i = 0; i < this.run.inventory.length && remaining > 0; i++) {
-            if (this.run.inventory[i] && this.run.inventory[i].id === itemId) {
-                this.run.inventory[i] = null;
-                remaining--;
+        this.equipment[slot] = itemId;
+        this.removeItem(itemId, 1);
+        this.updateStats();
+        this.events.emit('EQUIPMENT_CHANGED', this.equipment);
+        return true;
+    }
+
+    updateStats() {
+        let extraAtk = 0;
+        let extraDef = 0;
+
+        Object.values(this.equipment).forEach(itemId => {
+            if (!itemId) return;
+            const item = this.get('DataManager').getItem(itemId);
+            if (item) {
+                if (item.atk) extraAtk += item.atk;
+                if (item.def) extraDef += item.def;
             }
-        }
-        
-        // 2. 창고에서 소모
-        for (let i = 0; i < this.meta.stash.length && remaining > 0; i++) {
-            if (this.meta.stash[i] && this.meta.stash[i].id === itemId) {
-                this.meta.stash[i] = null;
-                remaining--;
-            }
-        }
-        
-        this.events.emit('PLAYER_DATA_CHANGED');
-    }
-
-    /**
-     * 슬롯 간 아이템 교환 (가장 핵심적인 로직)
-     */
-    swapItems(source, target) {
-        const sourceArr = source.arr;
-        const targetArr = target.arr;
-        
-        let sourceItem = source.type === 'container' ? sourceArr[source.idx]?.data : sourceArr[source.idx];
-        let targetItem = target.type === 'container' ? targetArr[target.idx]?.data : targetArr[target.idx];
-
-        if (!sourceItem && !targetItem) return { success: false };
-
-        // 장비 슬롯 검증 (Type Check)
-        if (target.type === 'equip' && sourceItem && (sourceItem.type !== 'equipment' || sourceItem.slot !== target.idx)) {
-            return { success: false, msg: "장착할 수 없는 부위입니다." };
-        }
-        if (source.type === 'equip' && targetItem && (targetItem.type !== 'equipment' || targetItem.slot !== source.idx)) {
-            return { success: false, msg: "해당 슬롯에 장착할 수 없는 아이템입니다." };
-        }
-
-        // 데이터 반영
-        const setVal = (info, item) => {
-            if (info.type === 'container') {
-                info.arr[info.idx] = item ? { data: item, revealed: true, progress: 2.0 } : null;
-            } else {
-                info.arr[info.idx] = item;
-            }
-        };
-
-        setVal(target, sourceItem);
-        setVal(source, targetItem);
-
-        this.events.emit('PLAYER_DATA_CHANGED');
-        return { success: true };
-    }
-
-    /**
-     * 첫 번째 빈 슬롯으로 아이템 이동
-     */
-    moveToFirstEmpty(source, targetType, targetArr) {
-        const emptyIdx = targetArr.findIndex(slot => !slot);
-        if (emptyIdx === -1) return { success: false, msg: "공간이 부족합니다." };
-
-        return this.swapItems(source, { type: targetType, idx: emptyIdx, arr: targetArr });
-    }
-
-    /**
-     * 시설(건물) 업그레이드
-     */
-    upgradeFacility(type) {
-        const stats = this.meta.upgrades;
-        const currentLevel = stats[type] || 1;
-        
-        // 기획 데이터 기반 비용 계산 (추후 DataManager로 분리 가능)
-        const costVal = type === 'warehouse' ? 100 * currentLevel : 150 * currentLevel;
-        const costMat = type === 'warehouse' ? 50 * currentLevel : 100 * currentLevel;
-
-        if (this.meta.valuables >= costVal && this.meta.materials >= costMat) {
-            this.meta.valuables -= costVal;
-            this.meta.materials -= costMat;
-            
-            stats[type] = currentLevel + 1;
-            
-            if (type === 'warehouse') this.resizeInventory();
-            
-            this.events.emit('PLAYER_UPGRADED', { type, level: stats[type] });
-            this.events.emit('PLAYER_DATA_CHANGED');
-            
-            return { success: true, msg: `${type === 'warehouse' ? '창고' : '작업대'} 업그레이드 완료!` };
-        }
-        return { success: false, msg: "자원이 부족합니다." };
-    }
-
-    /**
-     * 아이템 획득 (가방 우선, 꽉 차면 실패)
-     */
-    giveItem(itemData) {
-        let emptyInv = this.run.inventory.findIndex((slot, idx) => !slot && idx < this.run.maxSlots);
-        if (emptyInv !== -1) {
-            this.run.inventory[emptyInv] = itemData;
-            this.events.emit('PLAYER_DATA_CHANGED');
-            return true;
-        }
-        return false;
-    }
-
-    // --- 통계(Stats) Getter ---
-    getDefense() {
-        let def = 0;
-        const equip = this.run.equipment;
-        ['head', 'chest', 'legs', 'boots'].forEach(s => { 
-            if (equip[s]) def += equip[s].def || 0; 
         });
-        return def;
+
+        this.stats.atk = 10 + extraAtk;
+        this.stats.def = extraDef;
+        this.events.emit('STATS_CHANGED', this.stats);
     }
 
-    getMaxHp() { 
-        return 100 + (this.meta.upgrades.workbench - 1) * 20; 
+    // --- 던전 진행 로직 (원격 브랜치 통합) ---
+
+    setActiveDungeonPlan(plan) {
+        this.activeDungeonPlan = plan;
+        console.log("PlayerSession: Active dungeon plan set", plan);
     }
 
-    getMaxSp() { 
-        return 100 + (this.meta.upgrades.workbench - 1) * 10; 
+    getActiveDungeonPlan() {
+        return this.activeDungeonPlan;
+    }
+
+    recordDungeonResult(result) {
+        this.dungeonHistory.push({
+            timestamp: Date.now(),
+            ...result
+        });
+        this.events.emit('DUNGEON_FINISHED', result);
     }
 }

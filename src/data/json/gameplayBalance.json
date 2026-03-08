@@ -1,0 +1,85 @@
+{
+    "playerSession": {
+        "stashSize": 500,
+        "inventory": {
+            "baseSlots": 6,
+            "slotsPerWarehouseLevel": 4,
+            "maxSlots": 20
+        },
+        "quickSlotCount": 8,
+        "equipmentSlots": ["weapon", "head", "chest", "legs", "boots"],
+        "upgrades": {
+            "warehouse": {
+                "baseValuableCost": 100,
+                "baseMaterialCost": 50
+            },
+            "workbench": {
+                "baseValuableCost": 150,
+                "baseMaterialCost": 100
+            }
+        },
+        "workbenchStats": {
+            "baseHp": 100,
+            "hpPerLevel": 20,
+            "baseSp": 100,
+            "spPerLevel": 10
+        },
+        "sellPolicy": {
+            "materialIds": ["herb", "fabric", "wood", "leather", "iron_ore", "scrap", "core"],
+            "defaultValuableValue": 10,
+            "defaultMaterialValue": 5
+        }
+    },
+    "enemy": {
+        "radius": 14,
+        "aggroRange": 350,
+        "stepInterval": 0.4,
+        "melee": {
+            "maxHp": 60,
+            "speed": 120,
+            "attackRange": 30,
+            "attackCooldown": 1,
+            "damage": 15,
+            "color": "#ef4444"
+        },
+        "ranged": {
+            "maxHp": 40,
+            "speed": 70,
+            "attackRange": 250,
+            "attackCooldown": 2,
+            "damage": 15,
+            "projectileSpeed": 200,
+            "color": "#9333ea"
+        },
+        "death": {
+            "dropChance": 0.6,
+            "corpseSlots": 6
+        }
+    },
+    "runGeneration": {
+        "freeWeaponIds": ["sword", "spear", "bow"],
+        "roomType": {
+            "combatChance": 0.5,
+            "lootChance": 0.3
+        },
+        "enemySpawn": {
+            "minPerRoom": 1,
+            "maxPerRoom": 4,
+            "rangedChance": 0.3
+        },
+        "chestSpawn": {
+            "chanceInLootRoom": 1,
+            "chanceInNormalRoom": 0.3,
+            "slotCount": 6,
+            "minItems": 1,
+            "maxItems": 4
+        }
+    },
+    "dropTable": {
+        "relicChance": 0.1,
+        "materialChance": 0.5,
+        "goldChance": 0.2,
+        "potionChance": 0.15,
+        "materials": ["herb", "fabric", "wood", "leather", "iron_ore", "scrap", "core"]
+    }
+}
