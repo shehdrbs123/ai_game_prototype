@@ -19,11 +19,17 @@ export class DataManager extends BaseManager {
      * 외부 JSON 파일을 비동기로 로드합니다.
      */
     async loadJson(path) {
-        const response = await fetch(path);
-        if (!response.ok) {
-            throw new Error(`Failed to load '${path}' (HTTP ${response.status})`);
+        console.log(`DataManager: Loading JSON from ${path}...`);
+        try {
+            const response = await fetch(path);
+            if (!response.ok) {
+                throw new Error(`Failed to load '${path}' (HTTP ${response.status})`);
+            }
+            return await response.json();
+        } catch (e) {
+            console.error(`DataManager: Error loading ${path}:`, e);
+            throw e;
         }
-        return response.json();
     }
 
     /**
@@ -37,13 +43,14 @@ export class DataManager extends BaseManager {
         }
 
         try {
+            // 서버 환경에 따라 절대 경로(/) 보다는 현재 위치 기준 상대 경로 사용 권장
             const [settings, items, armorTemplates, recipes, dungeonOfferingSystem, gameplayBalance] = await Promise.all([
-                this.loadJson('/src/data/json/settings.json'),
-                this.loadJson('/src/data/json/items.json'),
-                this.loadJson('/src/data/json/armorTemplates.json'),
-                this.loadJson('/src/data/json/recipes.json'),
-                this.loadJson('/src/data/json/dungeonOfferingSystem.json'),
-                this.loadJson('/src/data/json/gameplayBalance.json')
+                this.loadJson('src/data/json/settings.json'),
+                this.loadJson('src/data/json/items.json'),
+                this.loadJson('src/data/json/armorTemplates.json'),
+                this.loadJson('src/data/json/recipes.json'),
+                this.loadJson('src/data/json/dungeonOfferingSystem.json'),
+                this.loadJson('src/data/json/gameplayBalance.json')
             ]);
 
             this.settings = settings;

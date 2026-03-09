@@ -55,9 +55,18 @@ async function bootstrap() {
     console.log("Bootstrap: Initializing managers...");
     
     for (const key of managerOrder) {
+        console.log(`Bootstrap: Initializing ${key}...`);
         const manager = app.get(key);
         if (manager && typeof manager.init === 'function') {
-            await manager.init(); // 비동기 초기화 지원
+            try {
+                await manager.init(); // 비동기 초기화 지원
+                console.log(`Bootstrap: ${key} initialized successfully.`);
+            } catch (e) {
+                console.error(`Bootstrap: Failed to initialize ${key}:`, e);
+                throw e; // 하나라도 실패하면 중단
+            }
+        } else {
+            console.warn(`Bootstrap: Manager ${key} not found or has no init()`);
         }
     }
 
