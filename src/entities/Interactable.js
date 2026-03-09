@@ -1,60 +1,67 @@
-
+/**
+ * Interactable: 상자, 시체, 제작대, 게이트 등 플레이어와 상호작용 가능한 모든 객체를 관리합니다.
+ */
 export class Interactable {
-    constructor(x, y, type, data = null, c) {
-        this.c = c; this.x = x; this.y = y; this.type = type; this.active = true; 
-
-        // 데이터 구조 표준화: 루팅 가능한 객체는 항상 { items: [] } 형식을 갖도록 보정
-        if (data && Array.isArray(data.items)) {
-            this.data = data;
-        } else if (Array.isArray(data)) {
-            this.data = { items: data };
-        } else {
-            this.data = data || { items: [] };
-        }
-
-        this.init3D();
-    }
-    init3D() {
+    constructor(x, y, type, data, app) {
+        this.app = app;
+        this.x = x;
+        this.y = y;
+        this.type = type; // 'CHEST', 'GATE_OBJ', 'ENEMY_CORPSE', etc.
+        this.data = data || {};
+        
+        const THREE = window.THREE;
         this.mesh = new THREE.Group();
-        let ts = this.c.get('MapManager').ts;
-        let geo, mat;
-
-        if (this.type === 'CHEST') {
-            geo = new THREE.BoxGeometry(32, 24, 24);
-            mat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
-            const chest = new THREE.Mesh(geo, mat);
-            chest.position.y = 12;
-            chest.castShadow = true;
-            chest.receiveShadow = true;
-            this.mesh.add(chest);
-        } else if (this.type === 'EXIT' || this.type === 'GATE_OBJ') {
-            const color = this.type === 'EXIT' ? 0x22c55e : 0x3b82f6;
-            geo = new THREE.CylinderGeometry(ts / 3, ts / 3, ts, 16);
-            mat = new THREE.MeshLambertMaterial({ color: color, transparent: true, opacity: 0.6 });
-            const portal = new THREE.Mesh(geo, mat);
-            portal.position.y = ts / 2;
-            this.mesh.add(portal);
-        } else if (this.type === 'CORPSE' || this.type === 'ENEMY_CORPSE') {
-            geo = new THREE.BoxGeometry(24, 32, 8);
-            mat = new THREE.MeshLambertMaterial({ color: 0x666666 });
-            const tomb = new THREE.Mesh(geo, mat);
-            tomb.position.y = 16;
-            tomb.castShadow = true;
-            this.mesh.add(tomb);
-        } else {
-            // Default for stash, workbench, townhall
-            geo = new THREE.BoxGeometry(40, 40, 40);
-            mat = new THREE.MeshLambertMaterial({ color: 0x718096 });
-            const box = new THREE.Mesh(geo, mat);
-            box.position.y = 20;
-            box.castShadow = true;
-            this.mesh.add(box);
-        }
-
-        this.mesh.position.set(this.x, 0, this.y);
+        this._initMesh(type);
+        this.mesh.position.set(x, 0, y);
     }
 
-    draw(ctx) {
-        // No-op for 3D
+    /**
+     * 타입에 따른 3D 메쉬 외형 설정
+     * @private
+     */
+    _initMesh(type) {
+        const THREE = window.THREE;
+        let geometry, material;
+
+        switch (type) {
+            case 'GATE_OBJ': // 던전 입구: 커다란 파란색 고리 또는 기둥
+                geometry = new THREE.TorusGeometry(40, 5, 16, 32);
+                material = new THREE.MeshStandardMaterial({ color: 0x3b82f6, emissive: 0x1d4ed8 });
+                const gate = new THREE.Mesh(geometry, material);
+                gate.position.y = 50;
+                this.mesh.add(gate);
+                break;
+
+            case 'CHEST': // 상자: 갈색 상자
+                geometry = new THREE.BoxGeometry(30, 30, 30);
+                material = new THREE.MeshStandardMaterial({ color: 0x92400e });
+                const chest = new THREE.Mesh(geometry, material);
+                chest.position.y = 15;
+                this.mesh.add(chest);
+                break;
+
+            case 'ENEMY_CORPSE': // 적 시체: 바닥에 누운 빨간색 판
+                geometry = new THREE.BoxGeometry(40, 5, 40);
+                material = new THREE.MeshStandardMaterial({ color: 0xef4444, transparent: true, opacity: 0.7 });
+                const corpse = new THREE.Mesh(geometry, material);
+                corpse.position.y = 2.5;
+                this.mesh.add(corpse);
+                break;
+
+            default: // 기타 마을 오브젝트 (제작대 등)
+                geometry = new THREE.CylinderGeometry(20, 20, 40, 8);
+                material = new THREE.MeshStandardMaterial({ color: 0x6b7280 });
+                const obj = new THREE.Mesh(geometry, material);
+                obj.position.y = 20;
+                this.mesh.add(obj);
+                break;
+        }
+    }
+
+    update(dt) {
+        // 애니메이션 효과 (게이트 회전 등)
+        if (this.type === 'GATE_OBJ') {
+            this.mesh.rotation.y += dt;
+        }
     }
 }
